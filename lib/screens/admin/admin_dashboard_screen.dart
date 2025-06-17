@@ -1,8 +1,7 @@
 // lib/screens/admin/admin_dashboard_screen.dart (Modifikasi BerandaAdminContent)
 
 // ... (import lainnya)
-import 'package:damiu/models/daily_sale_model.dart'; // Ini sepertinya tidak terpakai langsung di sini, tapi LinearRegressionModel iya
-import 'package:damiu/models/linear_regression_model.dart';
+import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/services/firestore_service.dart';
 import 'package:damiu/services/prediction_service.dart';
 import 'package:damiu/screens/admin/prediction_chart_widget.dart'; // Impor widget grafik
@@ -19,6 +18,9 @@ class BerandaAdminContent extends StatefulWidget {
 class _BerandaAdminContentState extends State<BerandaAdminContent> {
   final FirestoreService _firestoreService = FirestoreService();
   final PredictionService _predictionService = PredictionService();
+  Future<ApiPredictionResult>? _predictionFuture;
+  List<DailySale> _currentAllSalesData = []; // Untuk menyimpan data historis saat ini
+  final int _daysToPredictCount = 7;
   // final DataService _dataService = DataService(); // Hapus DataService
   // List<DailySale> _historicalSalesFromCsv = []; // Hapus variabel ini
   // @override
@@ -35,6 +37,38 @@ class _BerandaAdminContentState extends State<BerandaAdminContent> {
   //   }
   // }
 
+  void _fetchPredictions(List<DailySale> salesData) {
+    if (mounted) {
+      _currentAllSalesData = List.from(salesData); // Simpan salinan data
+      _currentAllSalesData.sort((a, b) => a.date.compareTo(b.date));
+
+      if (_currentAllSalesData.length >= 2) {
+        final String lastHistoricalDateForApi =
+            DateFormat('yyyy-MM-dd').format(_currentAllSalesData.last.date);
+        setState(() {
+          _predictionFuture = _predictionService.getPredictionsFromApi(
+            lastHistoricalDate: lastHistoricalDateForApi,
+            daysToPredict: _daysToPredictCount,
+          );
+        });
+      } else {
+        setState(() {
+          _predictionFuture = Future.value(ApiPredictionResult(
+            predictedQuantities: [],
+            success: false,
+            errorMessage: 'Tidak cukup data historis untuk prediksi.',
+          ));
+        });
+      }
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Panggilan awal bisa dilakukan di sini jika stream tidak langsung emit data,
+    // atau biarkan StreamBuilder yang memicu _fetchPredictions saat data pertama datang.
+  }
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<DailySale>>(
@@ -51,105 +85,142 @@ class _BerandaAdminContentState extends State<BerandaAdminContent> {
         final List<DailySale> allSalesData = snapshot.data ?? [];
         allSalesData.sort((a, b) => a.date.compareTo(b.date));
 
+        // Panggil _fetchPredictions ketika data dari stream berubah (dan valid)
+        // Ini akan memicu pemanggilan API dan memperbarui _predictionFuture
+        // Kita perlu cara agar ini tidak dipanggil berulang kali jika data stream sama.
+        // Salah satu cara adalah membandingkan dengan _currentAllSalesData.
+        // Namun, untuk StreamBuilder, ini akan dipanggil setiap kali stream emit.
+        // Lebih baik jika _fetchPredictions dipanggil sekali saat data valid pertama datang
+        // atau jika ada perubahan signifikan.
+        // Untuk saat ini, kita panggil jika _predictionFuture null atau data berubah.
+        if (allSalesData.isNotEmpty && (_predictionFuture == null || _currentAllSalesData.length != allSalesData.length)) {
+           WidgetsBinding.instance.addPostFrameCallback((_) {
+             _fetchPredictions(allSalesData);
+           });
+        } else if (allSalesData.isEmpty && _predictionFuture == null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+               setState(() {
+                 _predictionFuture = Future.value(ApiPredictionResult(
+                   predictedQuantities: [],
+                   success: false,
+                   errorMessage: 'Belum ada data penjualan untuk prediksi.',
+                 ));
+               });
+            });
+        }
+
         if (allSalesData.isEmpty) {
           return const Center(child: Text('Belum ada data penjualan untuk ditampilkan.'));
         }
 
-        final List<Map<String, double>> regressionData = [];
-        final DateTime overallStartDate = allSalesData.first.date;
+        return FutureBuilder<ApiPredictionResult>(
+          future: _predictionFuture,
+          builder: (context, predictionSnapshot) {
+            if (predictionSnapshot.connectionState == ConnectionState.waiting && _predictionFuture != null) {
+              return const Center(child: CircularProgressIndicator(key: ValueKey("dashboard_prediction_load")));
+            }
+            if (predictionSnapshot.hasError) {
+              return Center(child: Text('Error memuat prediksi: ${predictionSnapshot.error}'));
+            }
 
-        // Data untuk regresi: 'day' adalah indeks hari (mulai dari 1), 'quantity' adalah kuantitas
-        for (var sale in allSalesData) {
-          // Indeks hari untuk model regresi, dimulai dari 1
-          final double dayIndex = sale.date.difference(overallStartDate).inDays.toDouble() + 1;
-          regressionData.add({'day': dayIndex, 'quantity': sale.quantity.toDouble()});
-        }
+            List<double> predictedQuantities = [];
+            String? predictionErrorMessage;
 
-        final LinearRegressionModel regressionModel = _predictionService.calculateLinearRegression(regressionData);
-        
-        // Indeks hari terakhir dari data historis yang digunakan untuk regresi
-        final double lastModelInputDayIndex = regressionData.isNotEmpty ? regressionData.last['day']! : 0;
+            if (predictionSnapshot.hasData) {
+              final result = predictionSnapshot.data!;
+              if (result.success) {
+                predictedQuantities = result.predictedQuantities;
+              } else {
+                predictionErrorMessage = result.errorMessage;
+              }
+            } else if (_predictionFuture == null && allSalesData.isNotEmpty) {
+                 // Kasus di mana _fetchPredictions belum dipanggil atau selesai
+                 return const Center(child: Text("Memuat data prediksi..."));
+            }
 
-        final int daysToPredictCount = 7;
-        final List<DailySale> predictedSales = [];
 
-        for (int i = 1; i <= daysToPredictCount; i++) {
-          // Indeks hari untuk prediksi, relatif terhadap input model regresi
-          final double predictDayIndex = lastModelInputDayIndex + i;
-          final DateTime predictDate = allSalesData.last.date.add(Duration(days: i));
-          final double predictedQuantity = regressionModel.predict(predictDayIndex);
-          predictedSales.add(DailySale(
-            date: predictDate,
-            dayOfWeek: predictDate.weekday,
-            deliveryCount: 0, // Tambahkan deliveryCount untuk prediksi (default 0)
-            quantity: predictedQuantity.round(),
-            isSynced: false,
-          ));
-        }
+            final List<DailySale> predictedSalesForTable = [];
+            if (allSalesData.isNotEmpty && predictedQuantities.isNotEmpty) {
+              DateTime lastHistoricalDate = allSalesData.last.date;
+              for (int i = 0; i < predictedQuantities.length; i++) {
+                final DateTime predictDate = lastHistoricalDate.add(Duration(days: i + 1));
+                predictedSalesForTable.add(DailySale(
+                  date: predictDate,
+                  dayOfWeek: predictDate.weekday,
+                  deliveryCount: 0,
+                  quantity: predictedQuantities[i].round(),
+                  isSynced: false,
+                ));
+              }
+            }
 
-        return SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (allSalesData.isNotEmpty) // Hanya tampilkan grafik jika ada data
-                  PredictionChartWidget(
-                    historicalSales: allSalesData,
-                    // predictedSales: predictedSales, // Widget grafik akan menghitung prediksinya sendiri berdasarkan model
-                    regressionModel: regressionModel,
-                    daysToPredict: daysToPredictCount,
-                  ),
-                const Text('Grafik Prediksi Permintaan Galon', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
-                const ChartLegend(),
-                const SizedBox(height: 30),
-                const Text('Detail Prediksi 7 Hari ke Depan:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                if (predictedSales.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8.0),
-                    child: Text('Tidak ada data prediksi yang bisa ditampilkan.'),
-                  )
-                else // Tampilkan DataTable jika ada data prediksi
-                  SizedBox(
-                    width: double.infinity, // Agar DataTable mengambil lebar penuh
-                    child: Card( // Bungkus DataTable dengan Card untuk estetika
-                      elevation: 2,
-                      margin: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: DataTable(
-                        columnSpacing: 20, // Atur jarak antar kolom
-                        headingRowColor: MaterialStateProperty.resolveWith<Color?>(
-                            (Set<MaterialState> states) {
-                          return Theme.of(context).primaryColor.withOpacity(0.1);
-                        }),
-                        headingTextStyle: const TextStyle(
-                            fontWeight: FontWeight.bold, color: Colors.black87),
-                        columns: const <DataColumn>[
-                          DataColumn(
-                            label: Text('Tanggal'),
-                          ),
-                          DataColumn(
-                            label: Text('Hari'),
-                          ),
-                          DataColumn(
-                            label: Text('Prediksi (Galon)'), // Hapus 'numeric: true' dari sini
-                          ),
-                        ],
-                        rows: predictedSales.map((sale) {
-                          return DataRow(
-                            cells: <DataCell>[
-                              DataCell(Text(DateFormat('dd MMM yyyy', 'id_ID').format(sale.date))),
-                              DataCell(Text(DateFormat('EEEE', 'id_ID').format(sale.date))),
-                              DataCell(Text(sale.quantity.toString()), placeholder: false, /*showEditIcon: false, onTap: null,*/ ), // Perataan numerik diatur oleh DataTable secara default jika data adalah angka
+            return SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 8),
+                    const Center(child: Text('Grafik Prediksi Permintaan Galon', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                    if (allSalesData.isNotEmpty)
+                      PredictionChartWidget(
+                        historicalSales: allSalesData,
+                        predictedQuantities: predictedQuantities, // Pastikan ini sudah benar
+                        daysToPredict: _daysToPredictCount,
+                      )
+                    else
+                      const Center(child: Text("Data historis tidak tersedia untuk grafik.")),
+                    if (predictionErrorMessage != null && predictionErrorMessage.isNotEmpty && allSalesData.isNotEmpty)
+                       Padding(
+                         padding: const EdgeInsets.symmetric(vertical: 8.0),
+                         child: Center(child: Text(predictionErrorMessage, style: const TextStyle(color: Colors.red))),
+                       ),
+                    const ChartLegend(),
+                    const SizedBox(height: 30),
+                    const Text('Detail Prediksi 7 Hari ke Depan:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    if (predictedSalesForTable.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Text(predictionErrorMessage != null && predictionErrorMessage.contains("Tidak cukup data")
+                            ? predictionErrorMessage
+                            : 'Tidak ada data prediksi yang bisa ditampilkan.'),
+                      )
+                    else
+                      SizedBox(
+                        width: double.infinity,
+                        child: Card(
+                          elevation: 2,
+                          margin: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: DataTable(
+                            columnSpacing: 20,
+                            headingRowColor: MaterialStateProperty.resolveWith<Color?>(
+                                (Set<MaterialState> states) {
+                              return Theme.of(context).primaryColor.withOpacity(0.1);
+                            }),
+                            headingTextStyle: const TextStyle(
+                                fontWeight: FontWeight.bold, color: Colors.black87),
+                            columns: const <DataColumn>[
+                              DataColumn(label: Text('Tanggal')),
+                              DataColumn(label: Text('Hari')),
+                              DataColumn(label: Text('Prediksi (Galon)')),
                             ],
-                          );
-                        }).toList(),
+                            rows: predictedSalesForTable.map((sale) {
+                              return DataRow(
+                                cells: <DataCell>[
+                                  DataCell(Text(DateFormat('dd MMM yyyy', 'id_ID').format(sale.date))),
+                                  DataCell(Text(DateFormat('EEEE', 'id_ID').format(sale.date))),
+                                  DataCell(Text(sale.quantity.toString())),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );

@@ -18,6 +18,7 @@ dependencies:
   fl_chart: ^0.66.2
   connectivity_plus: ^6.1.4
   intl: ^0.20.2
+  http: ^1.4.0
 
 
 dev_dependencies:

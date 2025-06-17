@@ -1,5 +1,4 @@
 import 'package:damiu/models/daily_sale_model.dart';
-import 'package:damiu/models/linear_regression_model.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -7,13 +6,13 @@ import 'package:intl/intl.dart';
 
 class PredictionChartWidget extends StatelessWidget {
   final List<DailySale> historicalSales;
-  final LinearRegressionModel regressionModel;
+  final List<double> predictedQuantities;
   final int daysToPredict;
 
   const PredictionChartWidget({
     super.key,
     required this.historicalSales,
-    required this.regressionModel,
+    required this.predictedQuantities,
     required this.daysToPredict,
   });
 
@@ -27,7 +26,6 @@ class PredictionChartWidget extends StatelessWidget {
 
     List<FlSpot> historicalSpots = [];
     List<FlSpot> predictedSpots = [];
-    List<FlSpot> regressionLineSpots = [];
 
     final DateTime startDate = historicalSales.first.date;
 
@@ -39,27 +37,15 @@ class PredictionChartWidget extends StatelessWidget {
     final double lastHistoricalDayIndex =
         historicalSales.last.date.difference(startDate).inDays.toDouble();
     final double totalChartDays = lastHistoricalDayIndex + daysToPredict;
-
-    if (regressionModel.slope != 0 || regressionModel.intercept != 0) {
-      for (double i = 0; i <= totalChartDays; i++) {
-        final double modelInputDayIndex = i + 1;
-        regressionLineSpots.add(
-          FlSpot(i, regressionModel.predict(modelInputDayIndex)),
-        );
-      }
-    }
-
-    if (regressionModel.slope != 0 || regressionModel.intercept != 0) {
-      final double lastHistoricalModelInputDay =
-          historicalSales.last.date.difference(startDate).inDays.toDouble() + 1.0;
+    // Buat FlSpot untuk prediksi berdasarkan predictedQuantities dari API
+    if (predictedQuantities.isNotEmpty) {
       for (int i = 1; i <= daysToPredict; i++) {
         final double dayIndexRelativeToStart = lastHistoricalDayIndex + i;
-        final double modelInputDayIndex =
-            lastHistoricalModelInputDay + i.toDouble();
-        final double predictedQty = regressionModel.predict(modelInputDayIndex);
-        predictedSpots.add(
-          FlSpot(dayIndexRelativeToStart, predictedQty.roundToDouble()),
-        );
+        if (i <= predictedQuantities.length) {
+          predictedSpots.add(
+            FlSpot(dayIndexRelativeToStart, predictedQuantities[i-1]),
+          );
+        }
       }
     }
 
@@ -188,15 +174,6 @@ class PredictionChartWidget extends StatelessWidget {
                           color: Colors.blue.withOpacity(0.2),
                         ),
                       ),
-                      if (regressionLineSpots.isNotEmpty)
-                        LineChartBarData(
-                          spots: regressionLineSpots,
-                          isCurved: true,
-                          color: Colors.green.shade600.withOpacity(0.8),
-                          barWidth: 2.5,
-                          dotData: const FlDotData(show: false),
-                          dashArray: [5, 5],
-                        ),
                       if (predictedSpots.isNotEmpty)
                         LineChartBarData(
                           spots: predictedSpots,
@@ -224,21 +201,14 @@ class PredictionChartWidget extends StatelessWidget {
                             if (barSpot.barIndex == 0) {
                               seriesName = 'Historis: ';
                               seriesColor = Colors.blue;
+                            } else if (barSpot.barIndex == 1 && predictedSpots.isNotEmpty) {
+                              // Jika hanya ada historis (0) dan prediksi (1)
+                              seriesName = 'Prediksi: ';
+                              seriesColor = Colors.red;
                             } else {
-                              if (regressionLineSpots.isNotEmpty) {
-                                if (barSpot.barIndex == 1) {
-                                  seriesName = 'Regresi: ';
-                                  seriesColor = Colors.green;
-                                } else if (barSpot.barIndex == 2 && predictedSpots.isNotEmpty) {
-                                  seriesName = 'Prediksi: ';
-                                  seriesColor = Colors.red;
-                                }
-                              } else if (predictedSpots.isNotEmpty) {
-                                if (barSpot.barIndex == 1) {
-                                  seriesName = 'Prediksi: ';
-                                  seriesColor = Colors.red;
-                                }
-                              }
+                              // Fallback jika ada bar lain yang tidak terduga
+                              seriesName = 'Data: ';
+                              seriesColor = Colors.grey;
                             }
 
                             final displayY = flSpot.y < 0 ? 0 : flSpot.y;
@@ -287,11 +257,9 @@ class ChartLegend extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _LegendItem(color: Colors.blue, text: 'Historis'),
-          SizedBox(width: 16),
-          _LegendItem(color: Colors.green, text: 'Regresi'),
-          SizedBox(width: 16),
-          _LegendItem(color: Colors.red, text: 'Prediksi'),
+          _LegendItem(color: Color.fromARGB(255, 30, 120, 209), text: 'Historis'),
+          _LegendItem(color: Color.fromARGB(255, 229, 57, 53), text: 'Prediksi'),
+          // Hapus legenda Regresi
         ],
       ),
     );
