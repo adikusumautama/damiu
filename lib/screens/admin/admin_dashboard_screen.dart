@@ -42,12 +42,11 @@ class _BerandaAdminContentState extends State<BerandaAdminContent> {
       _currentAllSalesData = List.from(salesData); // Simpan salinan data
       _currentAllSalesData.sort((a, b) => a.date.compareTo(b.date));
 
-      if (_currentAllSalesData.length >= 2) {
-        final String lastHistoricalDateForApi =
-            DateFormat('yyyy-MM-dd').format(_currentAllSalesData.last.date);
+      // API sekarang mengambil histori dari Firestore.
+      // Panggil API jika ada data untuk ditampilkan di grafik.
+      if (_currentAllSalesData.isNotEmpty) {
         setState(() {
           _predictionFuture = _predictionService.getPredictionsFromApi(
-            lastHistoricalDate: lastHistoricalDateForApi,
             daysToPredict: _daysToPredictCount,
           );
         });
@@ -56,7 +55,7 @@ class _BerandaAdminContentState extends State<BerandaAdminContent> {
           _predictionFuture = Future.value(ApiPredictionResult(
             predictedQuantities: [],
             success: false,
-            errorMessage: 'Tidak cukup data historis untuk prediksi.',
+            errorMessage: 'Tidak ada data historis lokal untuk ditampilkan di grafik.',
           ));
         });
       }

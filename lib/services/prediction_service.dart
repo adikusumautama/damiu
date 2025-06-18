@@ -23,19 +23,17 @@ class PredictionService {
   // Gunakan IP ini jika menjalankan Flutter di Emulator Android dan Flask di PC yang sama
   // final String _apiBaseUrl = 'http://10.0.2.2:5000/predict';
   // Gunakan IP lokal PC Anda jika menjalankan Flutter di HP pada WiFi yang sama (ganti dengan IP Anda)
-  final String _apiBaseUrl = 'http://192.168.236.78:5000/predict'; // GANTI DENGAN IP LOKAL PC ANDA
+  final String _apiBaseUrl = 'http://192.168.100.72:5000/predict'; // GANTI DENGAN IP LOKAL PC ANDA
 
   // Fungsi untuk mendapatkan prediksi dari API
-  // `lastHistoricalDate` adalah tanggal terakhir dari data historis yang diketahui (format YYYY-MM-DD)
   // `daysToPredict` adalah berapa hari ke depan yang ingin diprediksi
   Future<ApiPredictionResult> getPredictionsFromApi({
-    required String lastHistoricalDate, 
+    // Hapus required List<Map<String, dynamic>> histories,
     required int daysToPredict,
   }) async {
     try {
       // Siapkan body request (sesuaikan dengan kebutuhan API Anda)
       final requestBody = jsonEncode({
-        'last_historical_date': lastHistoricalDate, // Kirim tanggal terakhir
         'days_to_predict': daysToPredict,
       });
 
@@ -47,10 +45,15 @@ class PredictionService {
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
-        // Asumsi API mengembalikan JSON seperti: {"predictions": [10.0, 12.5, 11.0]}
-        List<double> predictions = List<double>.from(
-          responseData['predictions'] ?? [],
-        );
+        // API sekarang mengembalikan: {"predictions": [{"Tanggal": "YYYY-MM-DD", "Prediksi Galon": N}, ...]}
+        // Kita hanya butuh list dari "Prediksi Galon"
+        List<double> predictions = [];
+        if (responseData.containsKey('predictions') && responseData['predictions'] is List) {
+          List<dynamic> rawPredictions = responseData['predictions'];
+          predictions = rawPredictions
+              .map((p) => (p['Prediksi Galon'] as num?)?.toDouble() ?? 0.0) // Ambil 'Prediksi Galon'
+              .toList();
+        }
         return ApiPredictionResult(predictedQuantities: predictions);
       } else {
         // Tangani error dari API

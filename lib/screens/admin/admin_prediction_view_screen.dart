@@ -36,22 +36,22 @@ class _AdminPredictionViewScreenState extends State<AdminPredictionViewScreen> {
           _allSalesData = salesData;
           _allSalesData.sort((a, b) => a.date.compareTo(b.date));
 
-          if (_allSalesData.length >= 2) { // Butuh minimal data untuk konteks
-            // Siapkan tanggal terakhir data historis untuk API (format YYYY-MM-DD)
-            final String lastHistoricalDateForApi = DateFormat('yyyy-MM-dd').format(_allSalesData.last.date);
-
+          // API sekarang mengambil histori dari Firestore, jadi kita hanya perlu memastikan ada data
+          // untuk ditampilkan di grafik. Validasi jumlah data untuk prediksi dilakukan di API.
+          // Namun, kita tetap butuh _allSalesData untuk grafik.
+          // Panggilan API bisa dilakukan meskipun _allSalesData kosong, API akan handle.
+          // Untuk UI, kita mungkin tetap ingin ada minimal data lokal sebelum mencoba prediksi.
+          if (_allSalesData.isNotEmpty) { // Atau kondisi lain jika diperlukan untuk UI
             _predictionFuture = _predictionService.getPredictionsFromApi(
-              lastHistoricalDate: lastHistoricalDateForApi, // Kirim tanggal terakhir
               daysToPredict: _daysToPredictCount,
             );
           } else {
-            // Jika data historis kurang dari 2, set _predictionFuture ke hasil error
+            // Jika data historis kurang dari 14, set _predictionFuture ke hasil error
             // Ini akan ditangani oleh FutureBuilder untuk menampilkan pesan yang sesuai
-            // Set _predictionFuture ke hasil error atau kosong jika data tidak cukup
             _predictionFuture = Future.value(ApiPredictionResult(
               predictedQuantities: [],
               success: false,
-              errorMessage: 'Tidak cukup data historis untuk prediksi.',
+              errorMessage: 'Tidak ada data historis lokal untuk ditampilkan di grafik.',
             ));
           }
         });
@@ -145,7 +145,7 @@ class _AdminPredictionViewScreenState extends State<AdminPredictionViewScreen> {
         if (!predictionResult.success) {
           // Jika API call tidak sukses (termasuk kasus data tidak cukup)
           if (predictionResult.errorMessage == 'Tidak cukup data historis untuk prediksi.' || 
-              predictionResult.errorMessage == 'Tidak ada data historis untuk prediksi.') {
+              predictionResult.errorMessage == 'Tidak ada data historis untuk prediksi.' || (predictionResult.errorMessage?.contains('minimal 14 hari') ?? false) ) {
             return _buildInsufficientDataUI(predictionResult.errorMessage!);
           }
           // Untuk error lain dari API
