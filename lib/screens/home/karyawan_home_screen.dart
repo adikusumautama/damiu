@@ -2,7 +2,6 @@
 import 'package:damiu/models/user_model.dart'; // Impor UserModel
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/sync_service.dart'; // Import SyncService
-import 'package:damiu/services/database_helper.dart'; // Impor DatabaseHelper
 import 'package:flutter/material.dart';
 // Jika Anda memindahkan DailySalesInputScreen:
 import 'package:damiu/screens/other/local_sales_management_screen.dart'; // Impor widget baru
@@ -25,9 +24,8 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
   late String _currentScreenTitle;
   UserModel? _currentUserModel;
   final AuthService _authService = AuthService();
-  final DatabaseHelper _dbHelper = DatabaseHelper(); // Tambahkan DatabaseHelper
+// Tambahkan DatabaseHelper
   bool _isDailySyncing = false; // State untuk sinkronisasi harian
-  bool _isSyncing = false;
   final SyncService _syncService = SyncService();
 
   // Daftar widget untuk setiap tab BottomNavigationBar
@@ -111,25 +109,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
     }
   }
 
-  Future<void> _performSync() async {
-    setState(() {
-      _isSyncing = true;
-    });
-
-    final result = await _syncService.syncData();
-
-    if (mounted) {
-      setState(() {
-        _isSyncing = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.message),
-          backgroundColor: result.success ? Colors.green : Colors.red,
-        ),
-      );
-    }
-  }
 
   void _onItemTapped(int index) {
     setState(() {
