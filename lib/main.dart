@@ -11,6 +11,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/date_symbol_data_local.dart'; // Impor untuk initializeDateFormatting
 import 'firebase_options.dart'; // Pastikan file ini ada setelah flutterfire configure
 
+// Consider defining roles as constants or an enum
+class UserRoles {
+  static const String admin = 'admin';
+  static const String karyawan = 'karyawan';
+  static const String pelanggan = 'pelanggan';
+}
+
 // Widget untuk mengelola tampilan Login atau Register
 class AuthToggle extends StatefulWidget {
   const AuthToggle({super.key});
@@ -73,11 +80,11 @@ class AuthWrapper extends StatelessWidget {
 
                 final userModel = userModelSnapshot.data!;
                 switch (userModel.role) {
-                  case 'admin':
+                  case UserRoles.admin:
                     return const AdminHomeScreen();
-                  case 'karyawan':
+                  case UserRoles.karyawan:
                     return const KaryawanHomeScreen();
-                  case 'pelanggan':
+                  case UserRoles.pelanggan:
                     return const PelangganHomeScreen();
                   default:
                     print("Unknown role: ${userModel.role}. Redirecting to AuthToggle.");

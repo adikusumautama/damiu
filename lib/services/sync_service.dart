@@ -46,6 +46,28 @@ class SyncService {
     }
   }
 
+  Future<SyncResult> syncCustomers() async {
+    try {
+      final unsyncedCustomers = await _dbHelper.getUnsyncedCustomers();
+      if (unsyncedCustomers.isEmpty) {
+        return SyncResult(success: true, message: 'Tidak ada data pelanggan baru untuk disinkronkan.');
+      }
+
+      for (final customer in unsyncedCustomers) {
+        final error = await _firestoreService.upsertCustomer(customer);
+        if (error == null) {
+          if (customer.id != null) {
+            await _dbHelper.markCustomerAsSynced(customer.id!);
+          }
+        } else {
+          return SyncResult(success: false, message: 'Gagal sinkronisasi pelanggan ${customer.name}: $error');
+        }
+      }
+      return SyncResult(success: true, message: '${unsyncedCustomers.length} data pelanggan berhasil disinkronkan.');
+    } catch (e) {
+      return SyncResult(success: false, message: 'Error saat sinkronisasi pelanggan: $e');
+    }
+  }
 
   // Mengganti nama metode dan logikanya untuk menyinkronkan semua log yang belum diringkas
   Future<SyncResult> syncAllUnsummarizedDeliveryLogs() async {

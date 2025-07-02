@@ -1,7 +1,8 @@
 // lib/screens/admin/admin_prediction_view_screen.dart
 // Widget ini sekarang khusus untuk menampilkan grafik dan detail prediksi.
+import 'package:damiu/services/firestore_service.dart'; // Tambahkan impor ini
 import 'package:damiu/models/daily_sale_model.dart';
-import 'package:damiu/services/firestore_service.dart';
+import 'package:damiu/models/prediction_result_model.dart'; // Import model prediksi baru
 import 'package:damiu/services/prediction_service.dart';
 import 'package:damiu/screens/admin/prediction_chart_widget.dart'; // Impor widget grafik
 import 'package:intl/intl.dart'; // Untuk format tanggal
@@ -15,7 +16,7 @@ class AdminPredictionViewScreen extends StatefulWidget {
 }
 
 class _AdminPredictionViewScreenState extends State<AdminPredictionViewScreen> {
-  final FirestoreService _firestoreService = FirestoreService();
+  final FirestoreService _firestoreService = FirestoreService(); // Pastikan ini ada dan tidak terkomentari
   final PredictionService _predictionService = PredictionService();
   Future<ApiPredictionResult>? _predictionFuture; // Untuk menampung future prediksi
   List<DailySale> _allSalesData = []; // Untuk menyimpan data historis
@@ -28,39 +29,39 @@ class _AdminPredictionViewScreenState extends State<AdminPredictionViewScreen> {
   }
 
   void _loadDataAndPredictions() {
-    // Ambil data historis sekali saja, atau gunakan stream jika ingin update real-time
-    // Untuk prediksi, biasanya data historis diambil sekali saat akan membuat prediksi
-    _firestoreService.getDailySalesOnce().then((salesData) {
+    // API Flask yang diubah sekarang mengambil data historis sendiri (dari Firestore atau CSV).
+    // Kita hanya perlu memanggil API prediksi.
+    // Data historis untuk grafik akan diambil dari API response jika tersedia,
+    // atau mungkin perlu endpoint terpisah jika API prediksi hanya mengembalikan 1 hari.
+    // Asumsi: API prediksi yang baru HANYA mengembalikan prediksi untuk besok.
+    // Untuk menampilkan grafik historis + 1 hari prediksi, kita perlu endpoint terpisah
+    // untuk data historis, atau API prediksi mengembalikan data historis juga.
+    // Berdasarkan diff Python sebelumnya, API prediksi HANYA mengembalikan prediksi 1 hari.
+    // Jadi, kita perlu endpoint terpisah untuk data historis untuk grafik.
+    // Mari kita asumsikan ada endpoint baru `/history` atau kita tetap ambil dari Firestore untuk grafik.
+    // Kita tetap ambil dari Firestore untuk grafik, dan API prediksi hanya untuk nilai prediksi besok.
+
+    // Ambil data historis untuk grafik
+    _firestoreService.getDailySalesOnce().then((salesData) { // <-- FirestoreService masih dibutuhkan untuk grafik
       if (mounted) {
         setState(() {
           _allSalesData = salesData;
           _allSalesData.sort((a, b) => a.date.compareTo(b.date));
 
-          // API sekarang mengambil histori dari Firestore, jadi kita hanya perlu memastikan ada data
-          // untuk ditampilkan di grafik. Validasi jumlah data untuk prediksi dilakukan di API.
-          // Namun, kita tetap butuh _allSalesData untuk grafik.
-          // Panggilan API bisa dilakukan meskipun _allSalesData kosong, API akan handle.
-          // Untuk UI, kita mungkin tetap ingin ada minimal data lokal sebelum mencoba prediksi.
-          if (_allSalesData.isNotEmpty) { // Atau kondisi lain jika diperlukan untuk UI
-            _predictionFuture = _predictionService.getPredictionsFromApi(
-              daysToPredict: _daysToPredictCount,
-            );
-          } else {
-            // Jika data historis kurang dari 14, set _predictionFuture ke hasil error
-            // Ini akan ditangani oleh FutureBuilder untuk menampilkan pesan yang sesuai
-            _predictionFuture = Future.value(ApiPredictionResult(
-              predictedQuantities: [],
-              success: false,
-              errorMessage: 'Tidak ada data historis lokal untuk ditampilkan di grafik.',
-            ));
-          }
+          // Panggil API prediksi untuk mendapatkan prediksi besok
+          // Parameter daysToPredict tidak lagi relevan untuk API Flask yang diubah
+          _predictionFuture = _predictionService.getPredictionsFromApi(
+            // daysToPredict: _daysToPredictCount, // Parameter ini diabaikan oleh API Flask
+            // dataSource: 'firestore', // Default ke firestore di API Flask jika tidak dikirim
+          );
         });
       }
     }).catchError((error) {
       if (mounted) {
         setState(() {
-          _predictionFuture = Future.value(ApiPredictionResult(
-            predictedQuantities: [],
+          // Tangani error saat memuat data historis
+          _predictionFuture = Future.value(ApiPredictionResult( // Gunakan constructor yang benar
+            // predictedQuantities: [], // field ini tidak ada lagi di ApiPredictionResult
             success: false,
             errorMessage: 'Gagal memuat data historis: $error',
           ));
@@ -144,7 +145,7 @@ class _AdminPredictionViewScreenState extends State<AdminPredictionViewScreen> {
 
         if (!predictionResult.success) {
           // Jika API call tidak sukses (termasuk kasus data tidak cukup)
-          if (predictionResult.errorMessage == 'Tidak cukup data historis untuk prediksi.' || 
+          if (predictionResult.errorMessage == 'Tidak cukup data historis untuk prediksi.' ||
               predictionResult.errorMessage == 'Tidak ada data historis untuk prediksi.' || (predictionResult.errorMessage?.contains('minimal 14 hari') ?? false) ) {
             return _buildInsufficientDataUI(predictionResult.errorMessage!);
           }
@@ -152,20 +153,21 @@ class _AdminPredictionViewScreenState extends State<AdminPredictionViewScreen> {
           return Center(child: Text(predictionResult.errorMessage ?? 'Gagal mendapatkan prediksi.'));
         }
 
-        // Jika sukses dan ada data prediksi
-        final List<DailySale> predictedSalesForTable = [];
-        if (_allSalesData.isNotEmpty && predictionResult.predictedQuantities.isNotEmpty) {
-          DateTime lastHistoricalDate = _allSalesData.last.date;
-          for (int i = 0; i < predictionResult.predictedQuantities.length; i++) {
-            final DateTime predictDate = lastHistoricalDate.add(Duration(days: i + 1));
-            predictedSalesForTable.add(DailySale(
-              date: predictDate,
-              dayOfWeek: predictDate.weekday,
-              deliveryCount: 0, // Default
-              quantity: predictionResult.predictedQuantities[i].round(),
-              isSynced: false, // Ini hanya tampilan, tidak disimpan
-            ));
-          }
+        // Jika sukses
+        final List<DailySale> predictedSalesForTable = []; // List untuk tabel, hanya 1 hari
+        final List<double> predictedQuantitiesForChart = []; // Ubah ke List<double>
+
+        if (predictionResult.predictionForNextDay != null) {
+          // Tambahkan prediksi besok ke list untuk tabel
+          predictedSalesForTable.add(DailySale(
+            date: predictionResult.predictionForNextDay!.date,
+            dayOfWeek: predictionResult.predictionForNextDay!.date.weekday,
+            deliveryCount: 0, // Default
+            quantity: predictionResult.predictionForNextDay!.predictedQuantity,
+            isSynced: false, // Hanya tampilan
+          ));
+          // Tambahkan prediksi besok ke list untuk grafik
+          predictedQuantitiesForChart.add(predictionResult.predictionForNextDay!.predictedQuantity.toDouble()); // Konversi ke double
         }
 
         return SingleChildScrollView(
@@ -185,8 +187,8 @@ class _AdminPredictionViewScreenState extends State<AdminPredictionViewScreen> {
                 const SizedBox(height: 16),
                 if (_allSalesData.isNotEmpty)
                   PredictionChartWidget(
-                    historicalSales: _allSalesData,
-                    predictedQuantities: predictionResult.predictedQuantities, // Pastikan ini sudah benar
+                    historicalSales: _allSalesData, // Data historis untuk grafik
+                    predictedQuantities: predictedQuantitiesForChart, // Gunakan list yang sudah disiapkan
                     daysToPredict: _daysToPredictCount,
                   ) // Tutup PredictionChartWidget
                 else // Seharusnya kondisi ini tidak tercapai jika predictionResult.success true
@@ -196,7 +198,7 @@ class _AdminPredictionViewScreenState extends State<AdminPredictionViewScreen> {
                         child: Text("Data historis tidak tersedia untuk grafik."),
                       )),
                 const ChartLegend(), // Sesuaikan legenda jika model berubah
-                const SizedBox(height: 24), // Jarak sebelum detail prediksi
+                const SizedBox(height: 24), // Jarak sebelum detail prediksi (sekarang hanya 1 hari)
                 Text('Detail Prediksi ${_daysToPredictCount} Hari ke Depan:', // Judul detail prediksi
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
@@ -205,6 +207,7 @@ class _AdminPredictionViewScreenState extends State<AdminPredictionViewScreen> {
                     padding: EdgeInsets.symmetric(vertical: 8.0),
                     child: Text('Tidak ada data prediksi yang bisa ditampilkan.'),
                   )
+                // Tampilkan tabel hanya untuk prediksi besok
                 else
                   SizedBox(
                     width: double.infinity,
@@ -220,7 +223,7 @@ class _AdminPredictionViewScreenState extends State<AdminPredictionViewScreen> {
                         headingTextStyle: Theme.of(context).textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.bold, color: Colors.black87),
                         columns: const <DataColumn>[
-                          DataColumn(label: Text('Tanggal')),
+                          DataColumn(label: Text('Tanggal Prediksi')), // Sesuaikan label
                           DataColumn(label: Text('Hari')),
                           DataColumn(label: Text('Prediksi (Galon)')),
                         ],
@@ -240,7 +243,7 @@ class _AdminPredictionViewScreenState extends State<AdminPredictionViewScreen> {
           ),
         ),
       );
-      },
+      }, // Tutup FutureBuilder
     );
   }
 }

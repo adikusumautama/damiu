@@ -1,12 +1,12 @@
-// lib/screens/admin/admin_dashboard_screen.dart (Modifikasi BerandaAdminContent)
+// lib/screens/admin/admin_dashboard_screen.dart
 
-// ... (import lainnya)
 import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/services/firestore_service.dart';
-import 'package:damiu/services/prediction_service.dart';
-import 'package:damiu/screens/admin/prediction_chart_widget.dart'; // Impor widget grafik
+import 'package:damiu/services/auth_service.dart';
+import 'package:damiu/models/daily_stock_model.dart';
 import 'package:intl/intl.dart'; // Untuk format tanggal
-import 'package:flutter/material.dart'; // Pastikan Flutter Material diimpor
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class BerandaAdminContent extends StatefulWidget {
   const BerandaAdminContent({super.key});
@@ -17,64 +17,15 @@ class BerandaAdminContent extends StatefulWidget {
 
 class _BerandaAdminContentState extends State<BerandaAdminContent> {
   final FirestoreService _firestoreService = FirestoreService();
-  final PredictionService _predictionService = PredictionService();
-  Future<ApiPredictionResult>? _predictionFuture;
-  List<DailySale> _currentAllSalesData = []; // Untuk menyimpan data historis saat ini
-  final int _daysToPredictCount = 7;
-  // final DataService _dataService = DataService(); // Hapus DataService
-  // List<DailySale> _historicalSalesFromCsv = []; // Hapus variabel ini
-  // @override
-  // void initState() {
-  //   super.initState();
-  //   _loadHistoricalCsvData(); // Hapus pemanggilan method ini
-  // }
-  // Future<void> _loadHistoricalCsvData() async { // Hapus method ini
-  //   final List<DailySale> csvSales = await _dataService.loadSalesDataFromCsv('assets/damiu.csv');
-  //   if (mounted) {
-  //     setState(() {
-  //       _historicalSalesFromCsv = csvSales;
-  //     });
-  //   }
-  // }
+  final DateTime _today =
+      DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
 
-  void _fetchPredictions(List<DailySale> salesData) {
-    if (mounted) {
-      _currentAllSalesData = List.from(salesData); // Simpan salinan data
-      _currentAllSalesData.sort((a, b) => a.date.compareTo(b.date));
-
-      // API sekarang mengambil histori dari Firestore.
-      // Panggil API jika ada data untuk ditampilkan di grafik.
-      if (_currentAllSalesData.isNotEmpty) {
-        setState(() {
-          _predictionFuture = _predictionService.getPredictionsFromApi(
-            daysToPredict: _daysToPredictCount,
-          );
-        });
-      } else {
-        setState(() {
-          _predictionFuture = Future.value(ApiPredictionResult(
-            predictedQuantities: [],
-            success: false,
-            errorMessage: 'Tidak ada data historis lokal untuk ditampilkan di grafik.',
-          ));
-        });
-      }
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    // Panggilan awal bisa dilakukan di sini jika stream tidak langsung emit data,
-    // atau biarkan StreamBuilder yang memicu _fetchPredictions saat data pertama datang.
-  }
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<DailySale>>(
       stream: _firestoreService.getDailySalesStream(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          // Tampilkan loading jika data CSV belum dimuat dan stream masih menunggu
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
@@ -84,142 +35,211 @@ class _BerandaAdminContentState extends State<BerandaAdminContent> {
         final List<DailySale> allSalesData = snapshot.data ?? [];
         allSalesData.sort((a, b) => a.date.compareTo(b.date));
 
-        // Panggil _fetchPredictions ketika data dari stream berubah (dan valid)
-        // Ini akan memicu pemanggilan API dan memperbarui _predictionFuture
-        // Kita perlu cara agar ini tidak dipanggil berulang kali jika data stream sama.
-        // Salah satu cara adalah membandingkan dengan _currentAllSalesData.
-        // Namun, untuk StreamBuilder, ini akan dipanggil setiap kali stream emit.
-        // Lebih baik jika _fetchPredictions dipanggil sekali saat data valid pertama datang
-        // atau jika ada perubahan signifikan.
-        // Untuk saat ini, kita panggil jika _predictionFuture null atau data berubah.
-        if (allSalesData.isNotEmpty && (_predictionFuture == null || _currentAllSalesData.length != allSalesData.length)) {
-           WidgetsBinding.instance.addPostFrameCallback((_) {
-             _fetchPredictions(allSalesData);
-           });
-        } else if (allSalesData.isEmpty && _predictionFuture == null) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-               setState(() {
-                 _predictionFuture = Future.value(ApiPredictionResult(
-                   predictedQuantities: [],
-                   success: false,
-                   errorMessage: 'Belum ada data penjualan untuk prediksi.',
-                 ));
-               });
-            });
-        }
+        final todaySales = allSalesData.where((sale) {
+          return sale.date.year == _today.year &&
+              sale.date.month == _today.month &&
+              sale.date.day == _today.day;
+        }).toList();
 
-        if (allSalesData.isEmpty) {
-          return const Center(child: Text('Belum ada data penjualan untuk ditampilkan.'));
-        }
-
-        return FutureBuilder<ApiPredictionResult>(
-          future: _predictionFuture,
-          builder: (context, predictionSnapshot) {
-            if (predictionSnapshot.connectionState == ConnectionState.waiting && _predictionFuture != null) {
-              return const Center(child: CircularProgressIndicator(key: ValueKey("dashboard_prediction_load")));
-            }
-            if (predictionSnapshot.hasError) {
-              return Center(child: Text('Error memuat prediksi: ${predictionSnapshot.error}'));
-            }
-
-            List<double> predictedQuantities = [];
-            String? predictionErrorMessage;
-
-            if (predictionSnapshot.hasData) {
-              final result = predictionSnapshot.data!;
-              if (result.success) {
-                predictedQuantities = result.predictedQuantities;
-              } else {
-                predictionErrorMessage = result.errorMessage;
-              }
-            } else if (_predictionFuture == null && allSalesData.isNotEmpty) {
-                 // Kasus di mana _fetchPredictions belum dipanggil atau selesai
-                 return const Center(child: Text("Memuat data prediksi..."));
-            }
-
-
-            final List<DailySale> predictedSalesForTable = [];
-            if (allSalesData.isNotEmpty && predictedQuantities.isNotEmpty) {
-              DateTime lastHistoricalDate = allSalesData.last.date;
-              for (int i = 0; i < predictedQuantities.length; i++) {
-                final DateTime predictDate = lastHistoricalDate.add(Duration(days: i + 1));
-                predictedSalesForTable.add(DailySale(
-                  date: predictDate,
-                  dayOfWeek: predictDate.weekday,
-                  deliveryCount: 0,
-                  quantity: predictedQuantities[i].round(),
-                  isSynced: false,
-                ));
-              }
-            }
-
-            return SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 8),
-                    const Center(child: Text('Grafik Prediksi Permintaan Galon', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-                    if (allSalesData.isNotEmpty)
-                      PredictionChartWidget(
-                        historicalSales: allSalesData,
-                        predictedQuantities: predictedQuantities, // Pastikan ini sudah benar
-                        daysToPredict: _daysToPredictCount,
-                      )
-                    else
-                      const Center(child: Text("Data historis tidak tersedia untuk grafik.")),
-                    if (predictionErrorMessage != null && predictionErrorMessage.isNotEmpty && allSalesData.isNotEmpty)
-                       Padding(
-                         padding: const EdgeInsets.symmetric(vertical: 8.0),
-                         child: Center(child: Text(predictionErrorMessage, style: const TextStyle(color: Colors.red))),
-                       ),
-                    const ChartLegend(),
-                    const SizedBox(height: 30),
-                    const Text('Detail Prediksi 7 Hari ke Depan:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    if (predictedSalesForTable.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: Text(predictionErrorMessage != null && predictionErrorMessage.contains("Tidak cukup data")
-                            ? predictionErrorMessage
-                            : 'Tidak ada data prediksi yang bisa ditampilkan.'),
-                      )
-                    else
-                      SizedBox(
-                        width: double.infinity,
-                        child: Card(
-                          elevation: 2,
-                          margin: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: DataTable(
-                            columnSpacing: 20,
-                            headingRowColor: MaterialStateProperty.resolveWith<Color?>(
-                                (Set<MaterialState> states) {
-                              return Theme.of(context).primaryColor.withOpacity(0.1);
-                            }),
-                            headingTextStyle: const TextStyle(
-                                fontWeight: FontWeight.bold, color: Colors.black87),
-                            columns: const <DataColumn>[
-                              DataColumn(label: Text('Tanggal')),
-                              DataColumn(label: Text('Hari')),
-                              DataColumn(label: Text('Prediksi (Galon)')),
-                            ],
-                            rows: predictedSalesForTable.map((sale) {
-                              return DataRow(
-                                cells: <DataCell>[
-                                  DataCell(Text(DateFormat('dd MMM yyyy', 'id_ID').format(sale.date))),
-                                  DataCell(Text(DateFormat('EEEE', 'id_ID').format(sale.date))),
-                                  DataCell(Text(sale.quantity.toString())),
-                                ],
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      ),
-                  ],
+        return SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Bagian Manajemen Stok
+                const Center(
+                    child: Text('Manajemen Stok Hari Ini',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold))),
+                const SizedBox(height: 8),
+                StreamBuilder<DailyStock?>(
+                  stream: _firestoreService.getDailyStockStream(_today),
+                  builder: (context, stockSnapshot) {
+                    if (stockSnapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final dailyStock = stockSnapshot.data;
+                    return _buildStockInfoCard(dailyStock, todaySales);
+                  },
                 ),
-              ),
-            );
-          },
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStockInfoCard(DailyStock? stock, List<DailySale> sales) {
+    // Data untuk Galon Isi
+    final initialFilledStock = stock?.initialStock ?? 0;
+    final totalSold = sales.fold<int>(0, (sum, item) => sum + item.quantity);
+    final remainingFilledStock = initialFilledStock - totalSold;
+
+    // Data untuk Galon Kosong
+    final initialEmptyStock = stock?.initialEmptyStock ?? 0;
+    // Admin hanya melihat stok awal kosong, bukan pergerakan harian dari log lokal
+    final currentEmptyStock = initialEmptyStock;
+
+    return Card(
+      elevation: 4,
+      margin: const EdgeInsets.only(bottom: 20),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Stok Hari Ini (Online)',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: () => _showSetInitialStockDialog(
+                    initialFilledStock,
+                    initialEmptyStock,
+                  ),
+                  tooltip: 'Ubah Stok Awal',
+                ),
+              ],
+            ),
+            const Divider(),
+            const SizedBox(height: 8),
+            // --- Bagian Galon Isi ---
+            Text('Galon Isi',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            _buildInfoRow('Stok Awal', '$initialFilledStock Galon'),
+            _buildInfoRow('Terjual (dari data sinkron)', '$totalSold Galon',
+                valueColor: Colors.red.shade700),
+            const Divider(thickness: 1, height: 24),
+            _buildInfoRow('Sisa Stok Isi', '$remainingFilledStock Galon',
+                isBold: true, valueColor: Colors.green.shade800),
+
+            const SizedBox(height: 24),
+
+            // --- Bagian Galon Kosong ---
+            Text('Galon Kosong',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            _buildInfoRow('Stok Awal Dibawa', '$initialEmptyStock Galon'),
+            _buildInfoRow('Kembali (Diterima)', 'Data dari Karyawan',
+                valueColor: Colors.grey),
+            const Divider(thickness: 1, height: 24),
+            _buildInfoRow('Stok Kosong Saat Ini', '$currentEmptyStock Galon',
+                isBold: true, valueColor: Colors.black87),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value,
+      {bool isBold = false, Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 16)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              color: valueColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showSetInitialStockDialog(
+      int currentFilledStock, int currentEmptyStock) async {
+    final TextEditingController filledStockController = TextEditingController(
+        text: currentFilledStock > 0 ? currentFilledStock.toString() : '');
+    final TextEditingController emptyStockController = TextEditingController(
+        text: currentEmptyStock > 0 ? currentEmptyStock.toString() : '');
+    final formKey = GlobalKey<FormState>();
+
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Atur Stok Awal Hari Ini'),
+          content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: filledStockController,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Jumlah Stok Galon Isi',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Stok tidak boleh kosong';
+                      }
+                      if (int.tryParse(value) == null ||
+                          int.parse(value) < 0) {
+                        return 'Masukkan angka valid';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: emptyStockController,
+                    decoration: const InputDecoration(
+                      labelText: 'Jumlah Galon Kosong Dibawa (Opsional)',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  ),
+                ],
+              )),
+          actions: <Widget>[
+            TextButton(
+                child: const Text('Batal'),
+                onPressed: () => Navigator.of(context).pop()),
+            TextButton(
+              child: const Text('Simpan'),
+              onPressed: () async {
+                if (formKey.currentState!.validate()) {
+                  final int filledStock =
+                      int.parse(filledStockController.text);
+                  final int emptyStock =
+                      int.tryParse(emptyStockController.text) ?? 0;
+                  final String? uid =
+                      AuthService().getCurrentUser()?.uid; // Admin's UID
+                  if (uid != null) {
+                    await _firestoreService.setInitialStock(
+                        date: _today,
+                        filledStock: filledStock,
+                        emptyStock: emptyStock,
+                        updatedByUid: uid);
+                    if (mounted) Navigator.of(context).pop();
+                  }
+                }
+              },
+            ),
+          ],
         );
       },
     );

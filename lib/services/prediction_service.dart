@@ -1,21 +1,7 @@
 // lib/services/prediction_service.dart
 import 'dart:convert'; // Untuk jsonDecode
 import 'package:http/http.dart' as http;
-
-// Anda mungkin ingin membuat model untuk menampung hasil prediksi dari API
-// jika responsnya lebih kompleks. Untuk contoh ini, kita asumsikan API
-// mengembalikan list angka (prediksi untuk beberapa hari ke depan).
-class ApiPredictionResult {
-  final List<double> predictedQuantities;
-  final bool success;
-  final String? errorMessage;
-
-  ApiPredictionResult({
-    required this.predictedQuantities,
-    this.success = true,
-    this.errorMessage,
-  });
-}
+import 'package:damiu/models/prediction_result_model.dart'; // Import model prediksi baru
 
 class PredictionService {
   // URL API Backend Anda (ganti dengan URL sebenarnya)
@@ -28,13 +14,14 @@ class PredictionService {
   // Fungsi untuk mendapatkan prediksi dari API
   // `daysToPredict` adalah berapa hari ke depan yang ingin diprediksi
   Future<ApiPredictionResult> getPredictionsFromApi({
-    // Hapus required List<Map<String, dynamic>> histories,
-    required int daysToPredict,
+    // daysToPredict parameter diabaikan oleh API Flask yang baru
+    // int daysToPredict = 1, // Parameter ini tidak lagi relevan untuk API Flask yang diubah
+    String dataSource = 'firestore', // Tambahkan parameter dataSource, default ke firestore
   }) async {
     try {
       // Siapkan body request (sesuaikan dengan kebutuhan API Anda)
       final requestBody = jsonEncode({
-        'days_to_predict': daysToPredict,
+        'data_source': dataSource, // Kirim parameter dataSource
       });
 
       final response = await http.post(
@@ -44,34 +31,30 @@ class PredictionService {
       );
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
-        // API sekarang mengembalikan: {"predictions": [{"Tanggal": "YYYY-MM-DD", "Prediksi Galon": N}, ...]}
-        // Kita hanya butuh list dari "Prediksi Galon"
-        List<double> predictions = [];
-        if (responseData.containsKey('predictions') && responseData['predictions'] is List) {
-          List<dynamic> rawPredictions = responseData['predictions'];
-          predictions = rawPredictions
-              .map((p) => (p['Prediksi Galon'] as num?)?.toDouble() ?? 0.0) // Ambil 'Prediksi Galon'
-              .toList();
-        }
-        return ApiPredictionResult(predictedQuantities: predictions);
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        return ApiPredictionResult.fromJson(data);
       } else {
-        // Tangani error dari API
-        print('API Error: ${response.statusCode} - ${response.body}');
-        return ApiPredictionResult(
-          predictedQuantities: [],
-          success: false,
-          errorMessage:
-              'Gagal mendapatkan prediksi dari API: ${response.statusCode}',
-        );
+        // Handle non-200 status codes, which might contain an error message
+        try {
+          final Map<String, dynamic> errorData = jsonDecode(response.body);
+          return ApiPredictionResult(
+            success: false,
+            errorMessage: errorData['error'] ?? 'Unknown API error (Status: ${response.statusCode})',
+          );
+        } catch (e) { // Tangani jika respons bukan JSON atau formatnya tidak sesuai
+          return ApiPredictionResult(
+            success: false,
+            errorMessage: 'Failed to parse error response (Status: ${response.statusCode}): $e',
+          );
+        }
       }
     } catch (e) {
       // Tangani error koneksi atau lainnya
       print('Error calling prediction API: $e');
+      // Menggunakan ApiPredictionResult dengan success: false untuk error koneksi
       return ApiPredictionResult(
-        predictedQuantities: [],
         success: false,
-        errorMessage: 'Terjadi kesalahan: $e',
+        errorMessage: 'Terjadi kesalahan koneksi: $e',
       );
     }
   }

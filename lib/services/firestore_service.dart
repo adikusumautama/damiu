@@ -2,6 +2,8 @@
 
 import 'package:damiu/models/daily_sync_metadata_model.dart'; // Impor model baru
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:damiu/models/customer_model.dart';
+import 'package:damiu/models/daily_stock_model.dart';
 import 'package:damiu/models/daily_sale_model.dart';
 
 import 'package:intl/intl.dart'; // Impor intl
@@ -204,6 +206,109 @@ class FirestoreService {
     }
   }
 
+  // --- Operasi untuk Stok Galon Harian ---
 
+  /// Mendapatkan stream data stok untuk tanggal tertentu.
+  /// Mengembalikan null jika dokumen tidak ada.
+  Stream<DailyStock?> getDailyStockStream(DateTime date) {
+    String docId = DateFormat('yyyy-MM-dd').format(date);
+    return _db.collection('daily_stock_levels').doc(docId).snapshots().map((snapshot) {
+      if (snapshot.exists) {
+        return DailyStock.fromFirestore(snapshot);
+      }
+      return null;
+    });
+  }
+
+  /// Mendapatkan stream data penjualan untuk tanggal tertentu.
+  Stream<List<DailySale>> getSalesForDateStream(DateTime date) {
+    final DateTime startOfDay = DateTime(date.year, date.month, date.day);
+    final DateTime endOfDay = startOfDay.add(const Duration(days: 1));
+
+    return _db
+        .collection('daily_sales')
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('date', isLessThan: Timestamp.fromDate(endOfDay))
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        return DailySale(
+          date: (data['date'] as Timestamp).toDate(),
+          dayOfWeek: data['day_of_week'] ?? (data['date'] as Timestamp).toDate().weekday,
+          deliveryCount: (data['delivery_count'] as num?)?.toInt() ?? 0,
+          quantity: data['quantity'] as int,
+          employeeUid: data['employee_uid'] as String?,
+          isSynced: true,
+          firestoreId: doc.id,
+        );
+      }).toList();
+    });
+  }
+
+  /// Mendapatkan data penjualan yang sudah disinkronkan untuk tanggal tertentu (Future).
+  Future<List<DailySale>> getSyncedSalesForDateOnce(DateTime date) async {
+    try {
+      final DateTime startOfDay = DateTime(date.year, date.month, date.day);
+      final DateTime endOfDay = startOfDay.add(const Duration(days: 1));
+
+      final snapshot = await _db
+          .collection('daily_sales')
+          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('date', isLessThan: Timestamp.fromDate(endOfDay))
+          .get();
+
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        // Asumsi data dari Firestore selalu 'synced'
+        return DailySale.fromMap(data..['is_synced'] = 1..['id'] = null);
+      }).toList();
+    } catch (e) {
+      print('Error getting synced sales for date: $e');
+      return [];
+    }
+  }
+
+  /// Menetapkan atau memperbarui stok awal untuk tanggal tertentu.
+  Future<String?> setInitialStock({
+    required DateTime date,
+    required int filledStock,
+    required int emptyStock, // Tetap ada, tapi akan selalu diisi 0 dari app
+    required String updatedByUid,
+  }) async {
+    try {
+      String docId = DateFormat('yyyy-MM-dd').format(date);
+      await _db.collection('daily_stock_levels').doc(docId).set({
+        'initial_stock': filledStock,
+        'initial_empty_stock': emptyStock, // Simpan sebagai 0
+        'last_updated': Timestamp.now(),
+        'updated_by_uid': updatedByUid,
+      }, SetOptions(merge: true));
+      return null; // Sukses
+    } catch (e) {
+      print('Error setting initial stock: $e');
+      return e.toString();
+    }
+  }
+
+  // --- Operasi untuk Pelanggan (Customer) ---
+
+  /// Menyimpan atau memperbarui data pelanggan di Firestore.
+  /// Menggunakan nama pelanggan sebagai ID dokumen untuk mencegah duplikasi.
+  Future<String?> upsertCustomer(Customer customer) async {
+    // Pengaman: Path dokumen Firestore tidak boleh kosong.
+    if (customer.name.trim().isEmpty) {
+      print('Error: Mencoba sinkronisasi pelanggan dengan nama kosong. Dilewati.');
+      // Kembalikan null agar proses sinkronisasi tidak berhenti karena error ini.
+      return null;
+    }
+    try {
+      await _db.collection('customers').doc(customer.name).set(customer.toFirestore(), SetOptions(merge: true));
+      return null; // Sukses
+    } catch (e) {
+      print('Error upserting customer to Firestore: $e');
+      return e.toString();
+    }
+  }
 
 }

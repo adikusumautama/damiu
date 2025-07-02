@@ -75,8 +75,8 @@ class PredictionChartWidget extends StatelessWidget {
           scrollDirection: Axis.horizontal,
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              minWidth: constraints.maxWidth, // jangan lebih kecil dari lebar layar
-              maxWidth: calculatedChartWidth, // panjang berdasarkan jumlah data
+              minWidth: calculatedChartWidth > constraints.maxWidth ? calculatedChartWidth : constraints.maxWidth, // jangan lebih kecil dari lebar layar
+              maxWidth: calculatedChartWidth > constraints.maxWidth ? calculatedChartWidth : constraints.maxWidth, // panjang berdasarkan jumlah data
             ),
             child: SizedBox(
               height: 500,

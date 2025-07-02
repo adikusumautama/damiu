@@ -1,173 +1,105 @@
-// lib/screens/employee/daily_sales_input_screen.dart
+// lib/screens/other/daily_sales_input_screen.dart
+// This screen is now repurposed to handle the delivery process based on recorded orders.
 
+import 'package:damiu/models/order_model.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:damiu/models/delivery_log_model.dart'; // Ganti ke DeliveryLogItem
+import 'package:damiu/models/delivery_log_model.dart';
 import 'package:damiu/services/database_helper.dart';
-import 'package:damiu/services/auth_service.dart'; // Untuk mendapatkan UID karyawan
-import 'package:intl/intl.dart'; // Tambahkan dependency intl di pubspec.yaml
+import 'package:damiu/services/auth_service.dart';
 
 class DailySalesInputScreen extends StatefulWidget {
   const DailySalesInputScreen({super.key});
 
   @override
-  State<DailySalesInputScreen> createState() => _DailySalesInputScreenState();
+  State<DailySalesInputScreen> createState() => _DeliveryProcessScreenState();
 }
 
-class _DailySalesInputScreenState extends State<DailySalesInputScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final TextEditingController _quantityController = TextEditingController();
-  DateTime _selectedDate = DateTime.now(); // Tetap untuk DatePicker
-  TimeOfDay _selectedTime = TimeOfDay.now(); // Untuk TimePicker
-  bool _isLoading = false;
+class _DeliveryProcessScreenState extends State<DailySalesInputScreen> {
+  final DatabaseHelper _dbHelper = DatabaseHelper();
+  final AuthService _authService = AuthService();
+  List<Order> _pendingOrders = [];
+  bool _isLoading = true;
 
   @override
-  void dispose() {
-    _quantityController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _loadPendingOrders();
   }
 
-  Future<void> _pickDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
+  Future<void> _loadPendingOrders() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+    });
+    final allOrders = await _dbHelper.getTodaysOrders();
+    // Filter for orders that are 'Belum Diantar'
+    final pending =
+        allOrders.where((order) => order.status == OrderStatus.pending).toList();
+    if (mounted) {
+      setState(() {
+        _pendingOrders = pending;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _processDelivery(Order order) async {
+    final confirm = await showDialog<bool>(
       context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(), // Hanya bisa input tanggal hari ini atau sebelumnya
+      builder: (context) => AlertDialog(
+        title: const Text('Konfirmasi Pengantaran'),
+        content: Text('Antar pesanan untuk ${order.customerName}? Stok galon akan dikurangi.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Ya, Antar'),
+          ),
+        ],
+      ),
     );
-    if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-      });
-    }
-  }
 
-  Future<void> _pickTime(BuildContext context) async {
-    final TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: _selectedTime,
-    );
-    if (picked != null && picked != _selectedTime) {
-      setState(() {
-        _selectedTime = picked;
-      });
-    }
-  }
+    if (confirm != true) return;
 
-  Future<void> _saveSale() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
-
-      final int quantity = int.parse(_quantityController.text);
-      final String? employeeUid = AuthService().getCurrentUser()?.uid; // Ambil UID karyawan yang login
-
-      if (employeeUid == null) {
-         // Handle error: user not logged in
-         if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Error: Pengguna tidak login.')),
-            );
-         }
-         setState(() { _isLoading = false; });
-         return;
-      }
-
-      final DateTime deliveryTimestamp = DateTime(
-        _selectedDate.year,
-        _selectedDate.month,
-        _selectedDate.day,
-        _selectedTime.hour,
-        _selectedTime.minute,
-      );
-
-      final DeliveryLogItem newLog = DeliveryLogItem(
-        timestamp: deliveryTimestamp,
-        gallons: quantity, // Ganti 'quantity' menjadi 'gallons'
-        employeeUid: employeeUid,
-        isSummarized: false, // Baru, belum diringkas
-      );
-
-      final dbHelper = DatabaseHelper();
-      try {
-        int id = await dbHelper.insertDeliveryLog(newLog);
-        if (mounted) {
-           if (id > 0) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Data pengantaran berhasil disimpan!')),
-              );
-              // Reset form
-              _quantityController.clear();
-              Navigator.pop(context, {'saved': true, 'navigateToBeranda': true}); // Kembali dengan hasil Map
-              // Tidak perlu reset tanggal/waktu, biarkan untuk input berikutnya jika mirip
-           } else {
-               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Gagal menyimpan data pengantaran.')),
-              );
-           }
-        }
-      } catch (e) {
-         if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Gagal menyimpan data: ${e.toString()}')),
-            );
-         }
-      } finally {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _saveNoDeliveryEntry() async {
     setState(() {
       _isLoading = true;
     });
 
-    final String? employeeUid = AuthService().getCurrentUser()?.uid;
-
+    final String? employeeUid = _authService.getCurrentUser()?.uid;
     if (employeeUid == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Error: Pengguna tidak login.')),
         );
+        setState(() => _isLoading = false);
       }
-      setState(() { _isLoading = false; });
       return;
     }
 
-    final DateTime entryTimestamp = DateTime(
-      _selectedDate.year,
-      _selectedDate.month,
-      _selectedDate.day,
-      _selectedTime.hour,
-      _selectedTime.minute,
-    );
-
-    final DeliveryLogItem noDeliveryLog = DeliveryLogItem(
-      timestamp: entryTimestamp,
-      gallons: 0, // Jumlah galon 0
+    // 1. Create a delivery log to track stock movement
+    final deliveryLog = DeliveryLogItem(
+      timestamp: DateTime.now(),
+      gallons: order.gallonQuantity,
+      emptyGallonsReturned: 0, // This is handled by a separate flow
       employeeUid: employeeUid,
       isSummarized: false,
-      isNoDeliveryMarker: true, // Tandai sebagai entri "tidak ada pengantaran"
     );
+    await _dbHelper.insertDeliveryLog(deliveryLog);
 
-    final dbHelper = DatabaseHelper();
-    try {
-      int id = await dbHelper.insertDeliveryLog(noDeliveryLog);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(id > 0 ? 'Data "Tidak Ada Pengantaran" berhasil disimpan.' : 'Gagal menyimpan data.')),
-        );
-        Navigator.pop(context, {'saved': true, 'navigateToBeranda': true});
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menyimpan data: ${e.toString()}')));
-      }
-    } finally {
-      if (mounted) setState(() { _isLoading = false; });
+    // 2. Update the order status to 'In Delivery'
+    await _dbHelper.updateOrderStatus(order.id!, OrderStatus.inDelivery);
+
+    // 3. Provide feedback and refresh the UI
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                'Pesanan untuk ${order.customerName} sedang diantar.')),
+      );
+      _loadPendingOrders(); // This will refresh the list and remove the processed order
     }
   }
 
@@ -175,76 +107,53 @@ class _DailySalesInputScreenState extends State<DailySalesInputScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Input Pengantaran Galon'),
+        title: const Text('Pilih Pesanan untuk Diantar'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              ListTile(
-                title: Text('Tanggal: ${DateFormat('yyyy-MM-dd').format(_selectedDate)}'),
-                trailing: const Icon(Icons.calendar_today_outlined),
-                onTap: () => _pickDate(context),
-              ),
-              ListTile(
-                title: Text('Waktu: ${_selectedTime.format(context)}'),
-                trailing: const Icon(Icons.access_time_outlined),
-                onTap: () => _pickTime(context),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                initialValue: '1', // Default value 1
-                decoration: const InputDecoration(
-                  labelText: 'Jumlah Pengantaran',
-                  border: OutlineInputBorder(),
-                  // Bisa tambahkan helperText jika perlu
-                  // helperText: 'Setiap input dihitung sebagai 1 pengantaran',
-                ),
-                enabled: false, // Tidak dapat diubah oleh pengguna
-              ),
-              const SizedBox(height: 16), // Tambah jarak
-              TextFormField(
-                controller: _quantityController,
-                decoration: const InputDecoration(
-                  labelText: 'Jumlah Galon Terjual',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Masukkan jumlah galon';
-                  }
-                  if (int.tryParse(value) == null || int.parse(value) <= 0) {
-                    return 'Masukkan angka positif yang valid';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-              _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ElevatedButton(
-                      onPressed: _saveSale,
-                      child: const Text('Simpan Pengantaran'),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _pendingOrders.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24.0),
+                    child: Text(
+                      'Tidak ada pesanan yang perlu diantar saat ini.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
                     ),
-              const SizedBox(height: 16),
-              _isLoading
-                  ? const SizedBox.shrink() // Jangan tampilkan tombol kedua jika sedang loading
-                  : OutlinedButton(
-                      onPressed: _saveNoDeliveryEntry,
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: Theme.of(context).colorScheme.primary),
-                      ),
-                      child: const Text('Tidak Ada Pengantaran'),
-                    ),
-            ],
-          ),
-        ),
-      ),
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadPendingOrders,
+                  child: ListView.builder(
+                    itemCount: _pendingOrders.length,
+                    itemBuilder: (context, index) {
+                      final order = _pendingOrders[index];
+                      return Card(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          title: Text(order.customerName,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${order.gallonQuantity} Galon'),
+                              if (order.address != null) Text(order.address!),
+                            ],
+                          ),
+                          trailing: ElevatedButton(
+                            onPressed:
+                                _isLoading ? null : () => _processDelivery(order),
+                            child: const Text('Antar'),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
     );
   }
 }

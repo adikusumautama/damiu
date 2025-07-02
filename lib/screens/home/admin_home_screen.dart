@@ -1,5 +1,6 @@
 import 'package:damiu/screens/admin/admin_prediction_view_screen.dart'; // Path file yang sudah diubah
 import 'package:damiu/screens/admin/admin_firestore_data_view_screen.dart'; // Impor widget baru
+import 'package:damiu/screens/admin/admin_dashboard_screen.dart';
 import 'package:damiu/screens/admin/admin_sync_metadata_screen.dart'; // Impor layar metadata baru
 import 'package:damiu/models/user_model.dart'; // Impor UserModel
 import 'package:damiu/services/auth_service.dart';
@@ -22,7 +23,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
 
   // Daftar widget untuk setiap tab
   static final List<Widget> _widgetOptions = <Widget>[
-    const Center(child: Text("Selamat Datang di Admin Dashboard Utama")), // Placeholder untuk Beranda baru
+    const BerandaAdminContent(), // Placeholder untuk Beranda baru
     const AdminPredictionViewScreen(), // Konten prediksi sekarang di sini
     const Center(child: Text("Halaman Manajemen Produk")), // Placeholder, ganti dengan widget ProdukAdminContent jika ada
   ];

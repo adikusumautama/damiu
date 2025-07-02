@@ -52,17 +52,13 @@ service cloud.firestore {
                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Aturan untuk data pelanggan yang bisa diakses karyawan (jika terpisah dari /users)
-    // Misalnya, jika ada koleksi /customer_details/{customerId}
-    match /customer_details/{customerId} { // Sesuaikan nama koleksi jika berbeda
-        // Karyawan dan Admin bisa membaca detail pelanggan
-        allow read: if request.auth != null &&
-                       (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan' ||
-                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
-        // Admin bisa menulis/menghapus detail pelanggan
-        allow write: if request.auth != null &&
-                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    // --- MODIFIKASI DI SINI ---
+    // Aturan untuk data pelanggan (customers) yang bisa diakses karyawan
+    match /customers/{customerId} {
+        // Karyawan dan Admin bisa membaca (untuk autocomplete) dan menulis (untuk membuat pelanggan baru)
+        allow read, write: if request.auth != null;
     }
+    // --- AKHIR MODIFIKASI ---
 
     // Koleksi Penjualan Harian (daily_sales)
     match /daily_sales/{saleId} {
@@ -81,6 +77,23 @@ service cloud.firestore {
       allow read, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
       // Karyawan bisa membuat/memperbarui metadata sinkronisasi
       allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan';
+    }
+
+    // Koleksi Stok Galon Harian (daily_stock_levels)
+    match /daily_stock_levels/{stockDateId} {
+      // Karyawan dan Admin bisa membaca stok harian
+      allow read: if request.auth != null &&
+                     (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan' ||
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+
+      // Karyawan dan Admin bisa membuat/memperbarui stok harian
+      allow create, update: if request.auth != null &&
+                              (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan' ||
+                               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+
+      // Hanya admin yang bisa menghapus stok harian
+      allow delete: if request.auth != null &&
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     // Aturan default: tolak semua akses ke koleksi lain jika tidak ada aturan spesifik
