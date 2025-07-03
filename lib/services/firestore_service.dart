@@ -297,11 +297,28 @@ class FirestoreService {
     }
   }
 
-  /// Mendapatkan stream real-time untuk semua pelanggan dari Firestore.
   Stream<List<Customer>> getCustomersStream() {
     return _db.collection('customers').snapshots().map((snapshot) {
       return snapshot.docs.map((doc) {
         return Customer.fromFirestore(doc.data(), doc.id);
+      }).toList();
+    });
+  }
+  
+  Stream<List<Order>> getTodaysOrdersStream() {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    return _db
+        .collection('orders')
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('createdAt', isLessThan: Timestamp.fromDate(endOfDay))
+        .orderBy('createdAt', descending: false)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        return Order.fromFirestore(doc.data(), doc.id);
       }).toList();
     });
   }

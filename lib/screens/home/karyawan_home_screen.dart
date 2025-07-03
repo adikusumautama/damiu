@@ -1,3 +1,5 @@
+// lib/screens/home/karyawan_home_screen.dart
+
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:damiu/models/daily_stock_model.dart';
@@ -7,7 +9,8 @@ import 'package:damiu/screens/other/customer_book_screen.dart';
 import 'package:damiu/screens/other/daily_sales_input_screen.dart';
 import 'package:damiu/screens/other/empty_gallon_input_screen.dart';
 import 'package:damiu/screens/other/karyawan_profile_screen.dart';
-import 'package:damiu/screens/other/local_sales_management_screen.dart' hide Padding, SizedBox;
+import 'package:damiu/screens/other/local_sales_management_screen.dart'
+    hide Padding, SizedBox;
 import 'package:damiu/screens/other/order_input_screen.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
@@ -140,9 +143,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
 
   void _onItemTapped(int index) {
     setState(() {
-      if (index == 1) {
-        _widgetOptions[1] = const CustomerBookScreen();
-      }
       _selectedIndex = index;
     });
   }
@@ -245,9 +245,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
   final AuthService _authService = AuthService();
 
   late DateTime _today;
-
-  List<Order> _activeOrders = [];
-  List<Order> _completedOrders = [];
+  late Stream<List<Order>> _ordersStream;
 
   int _totalGallonsOut = 0;
   int _totalGallonsIn = 0;
@@ -261,7 +259,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
     _today =
         DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
     _initializeAndLoadData();
@@ -291,52 +288,40 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
   Future<void> _initializeAndLoadData() async {
     setState(() {
       _firestoreStockStream = _firestoreService.getDailyStockStream(_today);
-    });
-    await _loadOfflineData();
-  }
-
-  Future<void> _loadOfflineData() async {
-    if (!mounted) return;
-    setState(() {
+      _ordersStream = _firestoreService.getTodaysOrdersStream();
       _isLoading = true;
     });
+    await _loadDeliveryStats();
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
+  Future<void> _loadDeliveryStats() async {
     final localLogs = await _dbHelper.getAllDeliveryLogsForDate(_today);
-    final allTodaysOrders = await _dbHelper.getTodaysOrders();
-
     final totalOut = localLogs.fold<int>(0, (sum, log) => sum + log.gallons);
     final totalIn =
         localLogs.fold<int>(0, (sum, log) => sum + log.emptyGallonsReturned);
     final deliveryCount =
         localLogs.where((log) => !log.isNoDeliveryMarker).length;
 
-    final active = allTodaysOrders
-        .where((o) =>
-            o.status == OrderStatus.pending ||
-            o.status == OrderStatus.inDelivery)
-        .toList();
-    final completed = allTodaysOrders
-        .where((o) => o.status == OrderStatus.delivered)
-        .toList();
-
     if (mounted) {
       setState(() {
         _totalGallonsOut = totalOut;
         _totalGallonsIn = totalIn;
         _deliveryCountToday = deliveryCount;
-        _activeOrders = active;
-        _completedOrders = completed;
-        _isLoading = false;
       });
-
-      final stockData = await _firestoreStockStream?.first;
-      if (stockData == null && !_isDialogShown) {
-        _isDialogShown = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showSetInitialStockDialog(0);
-        });
-      }
     }
+  }
+
+  Future<void> _syncLocalOrders(List<Order> firestoreOrders) async {
+    await _dbHelper.deleteTodaysOrders();
+    for (final order in firestoreOrders) {
+      await _dbHelper.insertOrder(order);
+    }
+    print("Sinkronisasi pesanan lokal selesai.");
   }
 
   Future<void> _showSetInitialStockDialog(int currentFilledStock) async {
@@ -419,7 +404,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                     });
                     if (mounted) {
                       Navigator.of(context).pop();
-                      _loadOfflineData();
                     }
                   }
                 }
@@ -439,58 +423,94 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
       _isDialogShown = false;
     });
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return _isLoading
         ? const Center(child: CircularProgressIndicator())
-        : DefaultTabController(
-            length: 2,
-            child: NestedScrollView(
-              headerSliverBuilder: (context, innerBoxIsScrolled) {
-                return [
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildStockInfoCardStream(),
-                          const SizedBox(height: 16),
-                          _buildActionButtons(),
-                          const Divider(height: 32, thickness: 1),
-                          const Text(
-                            'Daftar Pesanan Hari Ini',
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                        ],
+        : StreamBuilder<List<Order>>(
+            stream: _ordersStream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting && !_isLoading) {
+                 return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(
+                    child: Text("Error memuat pesanan: ${snapshot.error}"));
+              }
+
+              final allTodaysOrders = snapshot.data ?? [];
+
+              final activeOrders = allTodaysOrders
+                  .where((o) =>
+                      o.status == OrderStatus.pending ||
+                      o.status == OrderStatus.inDelivery)
+                  .toList();
+              final completedOrders = allTodaysOrders
+                  .where((o) => o.status == OrderStatus.delivered)
+                  .toList();
+
+              return FutureBuilder(
+                  future: _syncLocalOrders(allTodaysOrders),
+                  builder: (context, syncSnapshot) {
+                    return DefaultTabController(
+                      length: 2,
+                      child: NestedScrollView(
+                        headerSliverBuilder: (context, innerBoxIsScrolled) {
+                          return [
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    _buildStockInfoCardStream(),
+                                    const SizedBox(height: 16),
+                                    _buildActionButtons(),
+                                    const Divider(height: 32, thickness: 1),
+                                    const Text(
+                                      'Daftar Pesanan Hari Ini',
+                                      style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            SliverPersistentHeader(
+                              delegate: _SliverAppBarDelegate(
+                                TabBar(
+                                  tabs: [
+                                    Tab(
+                                        text:
+                                            'Perlu Diantar (${activeOrders.length})'),
+                                    Tab(
+                                        text:
+                                            'Selesai (${completedOrders.length})'),
+                                  ],
+                                ),
+                              ),
+                              pinned: true,
+                            ),
+                          ];
+                        },
+                        body: TabBarView(
+                          children: [
+                            _buildOrderListView(activeOrders,
+                                emptyMessage:
+                                    'Tidak ada pesanan yang perlu diantar saat ini.'),
+                            _buildOrderListView(completedOrders,
+                                emptyMessage:
+                                    'Belum ada pesanan yang selesai.'),
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
-                  SliverPersistentHeader(
-                    delegate: _SliverAppBarDelegate(
-                      TabBar(
-                        tabs: [
-                          Tab(text: 'Perlu Diantar (${_activeOrders.length})'),
-                          Tab(text: 'Selesai (${_completedOrders.length})'),
-                        ],
-                      ),
-                    ),
-                    pinned: true,
-                  ),
-                ];
-              },
-              body: TabBarView(
-                children: [
-                  _buildOrderListView(_activeOrders,
-                      emptyMessage:
-                          'Tidak ada pesanan yang perlu diantar saat ini.'),
-                  _buildOrderListView(_completedOrders,
-                      emptyMessage: 'Belum ada pesanan yang selesai.'),
-                ],
-              ),
-            ),
+                    );
+                  });
+            },
           );
   }
 
@@ -498,11 +518,18 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     return StreamBuilder<DailyStock?>(
       stream: _firestoreStockStream,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            !_isLoading) {
+        if (snapshot.connectionState == ConnectionState.waiting && !_isLoading) {
           return const LinearProgressIndicator();
         }
         final dailyStock = snapshot.data;
+        // Cek stok awal jika belum diatur
+        if (!snapshot.hasData && !_isDialogShown && !_isLoading) {
+          _isDialogShown = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showSetInitialStockDialog(0);
+          });
+        }
+
         return _buildStockInfoCard(dailyStock, _totalGallonsOut,
             _totalGallonsIn, _deliveryCountToday);
       },
@@ -516,8 +543,8 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
         onRefresh: _initializeAndLoadData,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          child: Container(
-            height: MediaQuery.of(context).size.height / 2,
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height / 2.5,
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.all(32.0),
@@ -612,7 +639,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
       DailyStock? stock, int totalOut, int totalIn, int deliveryCount) {
     final initialStock = stock?.initialStock ?? 0;
     final currentStock = initialStock - totalOut + totalIn;
-    final stockDifference = currentStock - initialStock;
 
     final Color stockColor;
     if (currentStock <= 0) {
@@ -659,8 +685,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
             _buildInfoRow('Kembali (Diterima)', '+$totalIn Galon',
                 valueColor: Colors.blue.shade700),
             const Divider(thickness: 0.5, height: 20),
-            _buildInfoRow(
-                'Total Persediaan Saat Ini', '$currentStock Galon',
+            _buildInfoRow('Total Persediaan Saat Ini', '$currentStock Galon',
                 isBold: true, valueColor: stockColor),
             if (currentStock > 0 && currentStock <= 5)
               Padding(
@@ -674,17 +699,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                         fontStyle: FontStyle.italic),
                     textAlign: TextAlign.center,
                   ),
-                ),
-              ),
-            if (stockDifference > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 12.0),
-                child: Text(
-                  'Ada lebih +$stockDifference galon masuk, sehingga total persediaan sekarang adalah $currentStock.',
-                  style: TextStyle(
-                      color: Colors.green.shade900,
-                      fontStyle: FontStyle.italic),
-                  textAlign: TextAlign.center,
                 ),
               ),
             const SizedBox(height: 16),
@@ -795,7 +809,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
           SnackBar(
               content: Text('Pesanan untuk ${order.customerName} selesai.')),
         );
-        _loadOfflineData();
+        _initializeAndLoadData();
       }
     }
   }
@@ -828,7 +842,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
           SnackBar(
               content: Text('Pesanan untuk ${order.customerName} dibatalkan.')),
         );
-        _loadOfflineData();
+        _initializeAndLoadData();
       }
     }
   }
@@ -860,7 +874,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                         builder: (context) => const OrderInputScreen()))
                 .then((saved) {
               if (saved == true) {
-                _loadOfflineData();
+                // Tidak perlu _loadOfflineData() lagi karena stream akan update otomatis
               }
             });
           },
@@ -881,7 +895,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                     MaterialPageRoute(
                         builder: (context) => const DailySalesInputScreen()))
                 .then((_) {
-              _loadOfflineData();
+              _loadDeliveryStats();
             });
           },
           style: ElevatedButton.styleFrom(
@@ -900,7 +914,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                         builder: (context) => const EmptyGallonInputScreen()))
                 .then((saved) {
               if (saved == true) {
-                _loadOfflineData();
+                _loadDeliveryStats();
               }
             });
           },

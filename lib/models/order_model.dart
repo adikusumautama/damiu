@@ -1,22 +1,23 @@
 // lib/models/order_model.dart
 
-// TAMBAHKAN IMPORT INI
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Order {
   final int? id; // Kunci utama untuk SQLite
+  final String? firestoreId; // ID unik dari dokumen di Firestore
   final String customerName;
   final int gallonQuantity;
-  final String? otherItems; // Teks sederhana untuk item lain, contoh: "Gas 3kg: 1"
+  final String? otherItems;
   final String? address;
   final String? phoneNumber;
-  final String status; // 'Belum Diantar', 'Sedang Dalam Pengantaran', 'Sudah Diantar'
+  final String status;
   final DateTime createdAt;
-  final DateTime? deliveredAt; // Waktu saat pengantaran selesai
+  final DateTime? deliveredAt;
   final String employeeUid;
 
   Order({
     this.id,
+    this.firestoreId,
     required this.customerName,
     required this.gallonQuantity,
     this.otherItems,
@@ -28,9 +29,11 @@ class Order {
     required this.employeeUid,
   });
 
+  // Method untuk konversi ke Map untuk database lokal (SQLite)
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'firestore_id': firestoreId,
       'customer_name': customerName,
       'gallon_quantity': gallonQuantity,
       'other_items': otherItems,
@@ -43,26 +46,11 @@ class Order {
     };
   }
 
-  // --- METHOD BARU YANG DITAMBAHKAN ---
-  Map<String, dynamic> toMapForFirestore() {
-    return {
-      // id lokal tidak dikirim ke firestore
-      'customerName': customerName,
-      'gallonQuantity': gallonQuantity,
-      'otherItems': otherItems,
-      'address': address,
-      'phoneNumber': phoneNumber,
-      'status': status,
-      'createdAt': Timestamp.fromDate(createdAt), // Gunakan Timestamp
-      'deliveredAt': deliveredAt != null ? Timestamp.fromDate(deliveredAt!) : null,
-      'employeeUid': employeeUid,
-    };
-  }
-  // --- AKHIR METHOD BARU ---
-
+  // Factory untuk membuat objek dari Map database lokal (SQLite)
   factory Order.fromMap(Map<String, dynamic> map) {
     return Order(
       id: map['id'] as int?,
+      firestoreId: map['firestore_id'] as String?,
       customerName: map['customer_name'] as String,
       gallonQuantity: map['gallon_quantity'] as int,
       otherItems: map['other_items'] as String?,
@@ -70,8 +58,44 @@ class Order {
       phoneNumber: map['phone_number'] as String?,
       status: map['status'] as String,
       createdAt: DateTime.parse(map['created_at'] as String),
-      deliveredAt: map['delivered_at'] != null ? DateTime.parse(map['delivered_at'] as String) : null,
+      deliveredAt: map['delivered_at'] != null
+          ? DateTime.parse(map['delivered_at'] as String)
+          : null,
       employeeUid: map['employee_uid'] as String,
+    );
+  }
+
+  // Method untuk konversi ke Map untuk Firestore
+  Map<String, dynamic> toMapForFirestore() {
+    return {
+      'customerName': customerName,
+      'gallonQuantity': gallonQuantity,
+      'otherItems': otherItems,
+      'address': address,
+      'phoneNumber': phoneNumber,
+      'status': status,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'deliveredAt':
+          deliveredAt != null ? Timestamp.fromDate(deliveredAt!) : null,
+      'employeeUid': employeeUid,
+    };
+  }
+
+  // Factory untuk membuat objek dari data Firestore
+  factory Order.fromFirestore(Map<String, dynamic> data, String documentId) {
+    return Order(
+      firestoreId: documentId,
+      customerName: data['customerName'] as String,
+      gallonQuantity: data['gallonQuantity'] as int,
+      otherItems: data['otherItems'] as String?,
+      address: data['address'] as String?,
+      phoneNumber: data['phoneNumber'] as String?,
+      status: data['status'] as String,
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      deliveredAt: data['deliveredAt'] != null
+          ? (data['deliveredAt'] as Timestamp).toDate()
+          : null,
+      employeeUid: data['employeeUid'] as String,
     );
   }
 }
