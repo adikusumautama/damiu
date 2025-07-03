@@ -4,7 +4,6 @@ import 'package:damiu/models/customer_model.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
-// Import FirestoreService
 import 'package:damiu/services/firestore_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,7 +25,6 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
 
   bool _isLoading = false;
   final DatabaseHelper _dbHelper = DatabaseHelper();
-  // Inisialisasi FirestoreService
   final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
   List<Customer> _allCustomers = [];
@@ -54,7 +52,6 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
     super.dispose();
   }
 
-  // MODIFIKASI FUNGSI INI
   Future<void> _saveOrder() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
@@ -72,7 +69,7 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
         return;
       }
 
-      // 1. Simpan/update data pelanggan di database lokal
+      // 1. Simpan/update data pelanggan di database lokal dan Firestore
       final newCustomer = Customer(
         name: _customerNameController.text.trim(),
         address: _addressController.text.trim().isNotEmpty
@@ -83,12 +80,11 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
             : null,
         createdAt: DateTime.now(),
       );
-      await _dbHelper.upsertCustomer(newCustomer);
-      // Sinkronkan data pelanggan ini ke Firestore (tanpa menunggu selesai)
+      // Kita tidak menunggu proses ini selesai agar UI tetap responsif
+      _dbHelper.upsertCustomer(newCustomer);
       _firestoreService.upsertCustomer(newCustomer);
 
-
-      // 2. Buat objek pesanan
+      // 2. Buat objek pesanan untuk dikirim ke Firestore
       final newOrder = Order(
         customerName: _customerNameController.text.trim(),
         gallonQuantity: int.parse(_gallonQuantityController.text),
@@ -107,38 +103,32 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
       );
 
       try {
-        // 3. Simpan pesanan ke database lokal (prioritas utama)
-        await _dbHelper.insertOrder(newOrder);
+        // 3. Kirim pesanan ke Firestore
+        final error = await _firestoreService.addOrder(newOrder);
 
-        // 4. Kirim pesanan ke Firestore (tanpa memblokir UI)
-        _firestoreService.addOrder(newOrder).then((error) {
-          if (error != null) {
-            // Jika gagal, tampilkan notifikasi tanpa mengganggu alur utama
-            print("Gagal sinkronisasi pesanan ke Firestore: $error");
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text(
-                        'Gagal sinkronisasi pesanan ke server. Data tersimpan lokal.'),
-                    backgroundColor: Colors.orange),
-              );
-            }
-          }
-        });
-
-        // 5. Tampilkan pesan sukses dan kembali ke halaman sebelumnya
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Pesanan berhasil dicatat!')),
-          );
-          Navigator.pop(context, true); // Kembali dengan status sukses
+          if (error != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Gagal menyimpan pesanan ke server: $error')),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Pesanan berhasil dicatat!')),
+            );
+            Navigator.pop(context, true);
+          }
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Gagal menyimpan pesanan: $e')),
+            SnackBar(content: Text('Terjadi error: $e')),
           );
-          setState(() => _isLoading = false);
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
         }
       }
     }
@@ -146,7 +136,6 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ... (UI tidak ada perubahan, jadi saya potong untuk keringkasan)
     return Scaffold(
       appBar: AppBar(
         title: const Text('Catat Pesanan Masuk'),
@@ -164,14 +153,11 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
+
+              // --- WIDGET AUTOCOMPLETE YANG DIKEMBALIKAN ---
               Autocomplete<Customer>(
                 displayStringForOption: (Customer option) => option.name,
                 optionsBuilder: (TextEditingValue textEditingValue) {
-                  _customerNameController.text = textEditingValue.text;
-                  if (textEditingValue.text.isEmpty) {
-                    _addressController.clear();
-                    _phoneController.clear();
-                  }
                   if (textEditingValue.text == '') {
                     return const Iterable<Customer>.empty();
                   }
@@ -190,6 +176,7 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
                     TextEditingController fieldController,
                     FocusNode fieldFocusNode,
                     VoidCallback onFieldSubmitted) {
+                  _customerNameController.text = fieldController.text;
                   return TextFormField(
                     controller: fieldController,
                     focusNode: fieldFocusNode,
@@ -199,8 +186,9 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
                       prefixIcon: Icon(Icons.person_search_outlined),
                     ),
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty)
+                      if (value == null || value.trim().isEmpty) {
                         return 'Nama pelanggan tidak boleh kosong';
+                      }
                       return null;
                     },
                   );
@@ -220,8 +208,7 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
                   if (value == null || value.isEmpty) {
                     return 'Jumlah galon tidak boleh kosong';
                   }
-                  if (int.tryParse(value) == null ||
-                      int.parse(value) <= 0) {
+                  if (int.tryParse(value) == null || int.parse(value) <= 0) {
                     return 'Masukkan jumlah yang valid';
                   }
                   return null;
@@ -241,7 +228,7 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
               TextFormField(
                 controller: _addressController,
                 decoration: const InputDecoration(
-                  labelText: 'Alamat (Opsional)',
+                  labelText: 'Alamat (Otomatis terisi jika ada)',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.location_on_outlined),
                 ),
@@ -251,7 +238,7 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
               TextFormField(
                 controller: _phoneController,
                 decoration: const InputDecoration(
-                  labelText: 'No. Telepon/WA (Opsional)',
+                  labelText: 'No. Telepon/WA (Otomatis terisi jika ada)',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.phone_outlined),
                 ),
