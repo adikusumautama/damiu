@@ -153,12 +153,29 @@ class FirestoreService {
       await _db.collection('daily_stock_levels').doc(docId).set({
         'initial_stock': filledStock,
         'initial_empty_stock': emptyStock,
+        'current_stock': filledStock, // Langsung set stok saat ini
         'last_updated': Timestamp.now(),
         'updated_by_uid': updatedByUid,
       }, SetOptions(merge: true));
       return null;
     } catch (e) {
       print('Error setting initial stock: $e');
+      return e.toString();
+    }
+  }
+
+  Future<String?> adjustCurrentStock(int quantityChange) async {
+    final docId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final docRef = _db.collection('daily_stock_levels').doc(docId);
+
+    try {
+      await docRef.update({
+        'current_stock': FieldValue.increment(quantityChange),
+        'last_updated': FieldValue.serverTimestamp(),
+      });
+      return null;
+    } catch (e) {
+      print('Error adjusting current stock: $e');
       return e.toString();
     }
   }

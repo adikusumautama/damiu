@@ -31,35 +31,42 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
         _isLoading = true;
       });
 
+      // Ambil UID karyawan untuk pencatatan (opsional, tapi bagus untuk audit)
       final String? employeeUid = _authService.getCurrentUser()?.uid;
       if (employeeUid == null) {
-        // ... (handle error)
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error: Pengguna tidak ditemukan.')),
+          );
+        }
+        setState(() => _isLoading = false);
         return;
       }
-
+      
       final int quantity = int.parse(_gallonQuantityController.text);
 
-      final error = await _firestoreService.addReturnedGallonLog(
-        quantity: quantity,
-        employeeUid: employeeUid,
-      );
+      // Langsung panggil fungsi untuk menambah stok di server.
+      // Angka positif berarti menambah.
+      final error = await _firestoreService.adjustCurrentStock(quantity);
 
       if (mounted) {
         if (error == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Berhasil mencatat galon kembali!')),
+            const SnackBar(content: Text('Berhasil memperbarui stok!')),
           );
           Navigator.pop(context, true);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Gagal menyimpan log: $error')),
+            SnackBar(content: Text('Gagal memperbarui stok: $error')),
           );
         }
       }
 
-      setState(() {
-        _isLoading = false;
-      });
+      if(mounted){
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -77,7 +84,7 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Catat jumlah galon kosong yang diterima/kembali.',
+                'Catat jumlah galon kosong yang diterima/kembali dari pelanggan.',
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center,
               ),
@@ -107,7 +114,7 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : ElevatedButton.icon(
                       icon: const Icon(Icons.save_outlined),
-                      label: const Text('Simpan Log'),
+                      label: const Text('Simpan & Tambah Stok'),
                       onPressed: _saveReturnedGallons,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
