@@ -1,21 +1,23 @@
+// lib/screens/home/karyawan_home_screen.dart
+
 import 'dart:async';
-import 'package:damiu/models/user_model.dart'; // Impor UserModel
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:damiu/models/order_model.dart';
-import 'package:damiu/services/auth_service.dart';
-import 'package:damiu/services/sync_service.dart'; // Import SyncService
 import 'package:damiu/models/daily_stock_model.dart';
+import 'package:damiu/models/order_model.dart';
+import 'package:damiu/models/user_model.dart';
+import 'package:damiu/screens/other/customer_book_screen.dart';
+import 'package:damiu/screens/other/daily_sales_input_screen.dart';
+import 'package:damiu/screens/other/empty_gallon_input_screen.dart';
+import 'package:damiu/screens/other/karyawan_profile_screen.dart';
+import 'package:damiu/screens/other/local_sales_management_screen.dart' hide Padding, SizedBox;
+import 'package:damiu/screens/other/order_input_screen.dart';
+import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/services/firestore_service.dart';
+import 'package:damiu/services/sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart'; // Impor intl
-import 'package:damiu/screens/other/local_sales_management_screen.dart' hide SizedBox, Padding; // Impor widget baru
-import 'package:damiu/screens/other/daily_sales_input_screen.dart'; // Path baru
-import 'package:damiu/screens/other/karyawan_profile_screen.dart'; // Impor layar profil
-import 'package:damiu/screens/other/empty_gallon_input_screen.dart'; // Impor layar baru
-import 'package:damiu/screens/other/customer_book_screen.dart'; // Impor layar buku pelanggan
-import 'package:damiu/screens/other/order_input_screen.dart'; // Impor layar baru untuk pesanan
+import 'package:intl/intl.dart';
 
 class KaryawanHomeScreen extends StatefulWidget {
   const KaryawanHomeScreen({super.key});
@@ -26,19 +28,16 @@ class KaryawanHomeScreen extends StatefulWidget {
 
 class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
     with WidgetsBindingObserver {
-  // Tambahkan WidgetsBindingObserver
   int _selectedIndex = 0;
   UserModel? _currentUserModel;
   final AuthService _authService = AuthService();
-// Tambahkan DatabaseHelper
-  bool _isDailySyncing = false; // State untuk sinkronisasi harian
+  bool _isDailySyncing = false;
   final SyncService _syncService = SyncService();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  bool _isOffline = false; // To track the connection state
+  bool _isOffline = false;
 
   late List<Widget> _widgetOptions;
 
-  // Daftar judul AppBar untuk setiap tab
   static const List<String> _appBarTitles = <String>[
     'Beranda',
     'Buku Pelanggan',
@@ -48,21 +47,20 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
   @override
   void initState() {
     super.initState();
-    // Inisialisasi _widgetOptions di sini agar bisa meneruskan _loadTodaysStats
     _widgetOptions = <Widget>[
       const KaryawanBerandaContent(),
-      const CustomerBookScreen(), // Tambahkan layar baru
+      const CustomerBookScreen(),
       const KaryawanProfileScreen(),
     ];
     _initializeConnectivity();
     _loadCurrentUser();
-    WidgetsBinding.instance.addObserver(this); // Daftarkan observer
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
     _connectivitySubscription?.cancel();
-    WidgetsBinding.instance.removeObserver(this); // Hapus observer
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -70,7 +68,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // Aplikasi kembali ke foreground, muat ulang statistik
       print("[KaryawanHomeScreen] App Resumed");
     }
   }
@@ -88,7 +85,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
   }
 
   Future<void> _initializeConnectivity() async {
-    // Check initial connection status
     final initialConnection = await Connectivity().checkConnectivity();
     if (initialConnection.contains(ConnectivityResult.none)) {
       setState(() {
@@ -96,7 +92,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
       });
     }
 
-    // Listen for subsequent changes
     _connectivitySubscription =
         Connectivity().onConnectivityChanged.listen(_updateConnectionStatus);
   }
@@ -104,7 +99,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
   void _updateConnectionStatus(List<ConnectivityResult> result) {
     final hasConnection = !result.contains(ConnectivityResult.none);
     if (!hasConnection && !_isOffline) {
-      // We just went offline
       setState(() => _isOffline = true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -117,15 +111,12 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
         );
       }
     } else if (hasConnection && _isOffline) {
-      // We just came online
       setState(() => _isOffline = false);
-      // Trigger automatic sync
       _performFullSync();
     }
   }
 
   Future<void> _performFullSync() async {
-    // Check for connection before attempting to sync
     final connectivityResult = await Connectivity().checkConnectivity();
     if (connectivityResult.contains(ConnectivityResult.none)) {
       print("Sync skipped: No internet connection.");
@@ -136,7 +127,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
       _isDailySyncing = true;
     });
 
-    // Perform syncs without showing individual SnackBars
     await _syncService.syncAllUnsummarizedDeliveryLogs();
     await _syncService.syncCustomers();
 
@@ -144,7 +134,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
       setState(() {
         _isDailySyncing = false;
       });
-      // Show a single confirmation SnackBar after sync is complete
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Anda sudah online. Data telah disinkronkan.'),
@@ -154,7 +143,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
       );
     }
   }
-
 
   void _onItemTapped(int index) {
     setState(() {
@@ -210,7 +198,7 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
               leading: const Icon(Icons.storage_outlined),
               title: const Text('Kelola Data Lokal'),
               onTap: () {
-                Navigator.pop(context); // Tutup drawer dulu
+                Navigator.pop(context);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -222,7 +210,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
                 );
               },
             ),
-            // Tambahkan item lain di drawer jika perlu
           ],
         ),
       ),
@@ -249,7 +236,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
   }
 }
 
-// Widget untuk konten Beranda Karyawan
 class KaryawanBerandaContent extends StatefulWidget {
   const KaryawanBerandaContent({
     super.key,
@@ -268,27 +254,39 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
 
   List<Order> _todaysOrders = [];
   List<Order> _filteredOrders = [];
-  String _selectedStatusFilter = 'Semua'; // Default filter: 'Semua'
-  int _allCount = 0, _pendingCount = 0, _inDeliveryCount = 0, _deliveredCount = 0;
+  String _selectedStatusFilter = 'Semua';
+  int _allCount = 0,
+      _pendingCount = 0,
+      _inDeliveryCount = 0,
+      _deliveredCount = 0;
 
-  DailyStock? _dailyStock;
   int _totalGallonsOut = 0;
   int _totalGallonsIn = 0;
-  int _deliveryCountToday = 0; // State baru untuk jumlah pengantaran
+  int _deliveryCountToday = 0;
   bool _isLoading = true;
 
-  // Kunci untuk memastikan dialog hanya muncul sekali
   final GlobalKey _dialogKey = GlobalKey();
-  bool _isDialogShown = false;  
+  bool _isDialogShown = false;
+
+  // MODIFIED: Stream untuk data stok dari Firestore
+  Stream<DailyStock?>? _firestoreStockStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOfflineData();
+    // MODIFIED: Inisialisasi stream dari Firestore
+    _firestoreStockStream = _firestoreService.getDailyStockStream(_today);
+  }
 
   Future<void> _showSetInitialStockDialog(int currentFilledStock) async {
-    final TextEditingController filledStockController =
-        TextEditingController(text: currentFilledStock > 0 ? currentFilledStock.toString() : '');
+    final TextEditingController filledStockController = TextEditingController(
+        text: currentFilledStock > 0 ? currentFilledStock.toString() : '');
     final formKey = GlobalKey<FormState>();
 
     return showDialog<void>(
       context: context,
-      barrierDismissible: false, // user must tap button!
+      barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
           key: _dialogKey,
@@ -330,27 +328,27 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
               child: const Text('Simpan'),
               onPressed: () async {
                 if (formKey.currentState!.validate()) {
-                  final int filledStock = int.parse(filledStockController.text);
+                  final int filledStock =
+                      int.parse(filledStockController.text);
                   final String? uid = _authService.getCurrentUser()?.uid;
-                  
+
                   if (uid != null) {
-                    // Buat objek stok
                     final newStock = DailyStock(
                       id: DateFormat('yyyy-MM-dd').format(_today),
                       initialStock: filledStock,
-                      initialEmptyStock: 0, // Selalu 0
+                      initialEmptyStock: 0,
                       lastUpdated: DateTime.now(),
                       updatedByUid: uid,
                     );
-                    // Simpan ke DB lokal terlebih dahulu untuk kapabilitas offline
                     await _dbHelper.upsertDailyStock(newStock);
-                    // Kemudian, coba simpan ke Firestore (jangan blokir UI)
-                    _firestoreService.setInitialStock(
+                    _firestoreService
+                        .setInitialStock(
                       date: _today,
                       filledStock: filledStock,
-                      emptyStock: 0, // Selalu 0
+                      emptyStock: 0,
                       updatedByUid: uid,
-                    ).then((error) {
+                    )
+                        .then((error) {
                       if (mounted && error != null) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -361,14 +359,13 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
                     });
                     if (mounted) {
                       Navigator.of(context).pop();
-                      // Muat ulang data dari lokal untuk memperbarui UI
                       _loadOfflineData();
                     }
                   }
                 }
               },
             ),
-            if (currentFilledStock > 0) // Tampilkan tombol Batal hanya jika sudah ada stok
+            if (currentFilledStock > 0)
               TextButton(
                 child: const Text('Batal'),
                 onPressed: () {
@@ -379,17 +376,17 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
         );
       },
     ).then((_) {
-      // Tandai bahwa dialog telah ditutup
       _isDialogShown = false;
     });
   }
 
-  Widget _buildStockInfoCard(DailyStock? stock, int totalOut, int totalIn, int deliveryCount) {
+  // MODIFIED: Widget _buildStockInfoCard sekarang menerima DailyStock dari StreamBuilder
+  Widget _buildStockInfoCard(
+      DailyStock? stock, int totalOut, int totalIn, int deliveryCount) {
     final initialStock = stock?.initialStock ?? 0;
     final currentStock = initialStock - totalOut + totalIn;
     final stockDifference = currentStock - initialStock;
 
-    // Tentukan warna dinamis untuk teks stok saat ini
     final Color stockColor;
     if (currentStock <= 0) {
       stockColor = Colors.red.shade800;
@@ -399,7 +396,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
       stockColor = Colors.green.shade800;
     }
 
-    // Tentukan kapan terakhir stok awal diupdate
     final lastUpdatedText = stock != null
         ? 'Diperbarui: ${DateFormat('dd MMM, HH:mm', 'id_ID').format(stock.lastUpdated)}'
         : 'Belum diatur hari ini';
@@ -428,39 +424,42 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
             ),
             const Divider(),
             const SizedBox(height: 8),
-            // --- Bagian Galon Isi ---
             _buildInfoRow('Jumlah Pengantaran', '$deliveryCount kali'),
             const Divider(thickness: 0.5, height: 20),
             _buildInfoRow('Stok Awal (Perkiraan)', '$initialStock Galon'),
-            _buildInfoRow('Keluar (Dianter)', '-$totalOut Galon', valueColor: Colors.red.shade700),
-            _buildInfoRow('Kembali (Diterima)', '+$totalIn Galon', valueColor: Colors.blue.shade700),
+            _buildInfoRow('Keluar (Dianter)', '-$totalOut Galon',
+                valueColor: Colors.red.shade700),
+            _buildInfoRow('Kembali (Diterima)', '+$totalIn Galon',
+                valueColor: Colors.blue.shade700),
             const Divider(thickness: 0.5, height: 20),
-            _buildInfoRow('Total Persediaan Saat Ini', '$currentStock Galon', isBold: true, valueColor: stockColor),
-            
-            // Pesan khusus jika stok menipis
+            _buildInfoRow(
+                'Total Persediaan Saat Ini', '$currentStock Galon',
+                isBold: true, valueColor: stockColor),
             if (currentStock > 0 && currentStock <= 5)
               Padding(
                 padding: const EdgeInsets.only(top: 12.0),
                 child: Center(
                   child: Text(
                     'Persediaan saat ini sangat menipis!',
-                    style: TextStyle(color: Colors.orange.shade900, fontWeight: FontWeight.bold, fontStyle: FontStyle.italic),
+                    style: TextStyle(
+                        color: Colors.orange.shade900,
+                        fontWeight: FontWeight.bold,
+                        fontStyle: FontStyle.italic),
                     textAlign: TextAlign.center,
                   ),
                 ),
               ),
-
-            // Pesan khusus jika stok akhir melebihi stok awal
             if (stockDifference > 0)
               Padding(
                 padding: const EdgeInsets.only(top: 12.0),
                 child: Text(
                   'Ada lebih +$stockDifference galon masuk, sehingga total persediaan sekarang adalah $currentStock.',
-                  style: TextStyle(color: Colors.green.shade900, fontStyle: FontStyle.italic),
+                  style: TextStyle(
+                      color: Colors.green.shade900,
+                      fontStyle: FontStyle.italic),
                   textAlign: TextAlign.center,
                 ),
               ),
-              
             const SizedBox(height: 16),
             const Divider(thickness: 1, height: 24),
             Align(
@@ -473,7 +472,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
       ),
     );
   }
-
 
   Widget _buildInfoRow(String label, String value,
       {bool isBold = false, Color? valueColor}) {
@@ -494,12 +492,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
         ],
       ),
     );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadOfflineData();
   }
 
   void _updateFilterCounts() {
@@ -525,47 +517,32 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
     });
   }
 
+  // MODIFIED: _loadOfflineData sekarang hanya memuat data transaksi lokal
   Future<void> _loadOfflineData() async {
     if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
 
-    // 1. Dapatkan stok awal dari DB lokal
-    final String todayDocId = DateFormat('yyyy-MM-dd').format(_today);
-    final stockData = await _dbHelper.getDailyStock(todayDocId);
-
-    // 2. Dapatkan log pengantaran hari ini dari DB lokal
     final localLogs = await _dbHelper.getAllDeliveryLogsForDate(_today);
     final totalOut = localLogs.fold<int>(0, (sum, log) => sum + log.gallons);
-    final totalIn = localLogs.fold<int>(0, (sum, log) => sum + log.emptyGallonsReturned);
+    final totalIn =
+        localLogs.fold<int>(0, (sum, log) => sum + log.emptyGallonsReturned);
 
-    // 3. Dapatkan daftar pesanan hari ini dari DB lokal
     final orders = await _dbHelper.getTodaysOrders();
-
-    // Hitung jumlah pengantaran yang valid (bukan marker "tidak ada pengantaran")
-    final deliveryCount = localLogs.where((log) => !log.isNoDeliveryMarker).length;
+    final deliveryCount =
+        localLogs.where((log) => !log.isNoDeliveryMarker).length;
 
     if (mounted) {
       setState(() {
-        _dailyStock = stockData;
         _totalGallonsOut = totalOut;
         _totalGallonsIn = totalIn;
         _deliveryCountToday = deliveryCount;
         _todaysOrders = orders;
         _updateFilterCounts();
-        _filterOrders(); // Apply the current filter
+        _filterOrders();
         _isLoading = false;
       });
-
-      // Jika stok belum diatur untuk hari ini dan dialog belum pernah ditampilkan,
-      // tampilkan dialog secara otomatis.
-      if (stockData == null && !_isDialogShown) {
-        _isDialogShown = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showSetInitialStockDialog(0);
-        });
-      }
     }
   }
 
@@ -631,8 +608,33 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _buildStockInfoCard(_dailyStock, _totalGallonsOut,
-                            _totalGallonsIn, _deliveryCountToday),
+                        // MODIFIED: Menggunakan StreamBuilder untuk data stok
+                        StreamBuilder<DailyStock?>(
+                          stream: _firestoreStockStream,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting && !_isLoading) {
+                              // Tampilkan loading kecil jika data lain sudah ada
+                              return const LinearProgressIndicator();
+                            }
+                            
+                            final dailyStock = snapshot.data;
+
+                            // Tampilkan dialog jika stok belum diatur
+                            if (!snapshot.hasData && !_isDialogShown) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                _showSetInitialStockDialog(0);
+                                _isDialogShown = true;
+                              });
+                            }
+
+                            return _buildStockInfoCard(
+                                dailyStock,
+                                _totalGallonsOut,
+                                _totalGallonsIn,
+                                _deliveryCountToday);
+                          },
+                        ),
                         const SizedBox(height: 16),
                         _buildActionButtons(),
                         const Divider(height: 32, thickness: 1),
@@ -653,7 +655,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
   }
 
   Widget _buildOrderListSliver() {
-    // A helper to get color based on status
     Color getStatusColor(String status) {
       switch (status) {
         case OrderStatus.delivered:
@@ -669,7 +670,8 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
     if (_filteredOrders.isEmpty) {
       return SliverToBoxAdapter(
         child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 48.0, horizontal: 16.0),
+          padding:
+              const EdgeInsets.symmetric(vertical: 48.0, horizontal: 16.0),
           child: Center(
             child: Text(
               _todaysOrders.isEmpty
@@ -687,58 +689,62 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
-          (context, index) { // Use _filteredOrders
-        final order = _filteredOrders[index];
-        return Card(
-          margin: const EdgeInsets.symmetric(vertical: 6.0),
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          (context, index) {
+            final order = _filteredOrders[index];
+            return Card(
+              margin: const EdgeInsets.symmetric(vertical: 6.0),
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        order.customerName,
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            order.customerName,
+                            style: const TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Chip(
+                          label: Text(
+                            order.status,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 12),
+                          ),
+                          backgroundColor: getStatusColor(order.status),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Chip(
-                      label: Text(
-                        order.status,
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 12),
-                      ),
-                      backgroundColor: getStatusColor(order.status),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
+                    const Divider(),
+                    _buildDetailRow(
+                        Icons.local_drink_outlined, '${order.gallonQuantity} Galon'),
+                    if (order.otherItems != null &&
+                        order.otherItems!.isNotEmpty)
+                      _buildDetailRow(
+                          Icons.add_shopping_cart_outlined, order.otherItems!),
+                    if (order.address != null && order.address!.isNotEmpty)
+                      _buildDetailRow(
+                          Icons.location_on_outlined, order.address!),
+                    if (order.phoneNumber != null &&
+                        order.phoneNumber!.isNotEmpty)
+                      _buildDetailRow(
+                          Icons.phone_outlined, order.phoneNumber!),
+                    const SizedBox(height: 8),
+                    _buildOrderActionButtons(order),
                   ],
                 ),
-                const Divider(),
-                _buildDetailRow(Icons.local_drink_outlined,
-                    '${order.gallonQuantity} Galon'),
-                if (order.otherItems != null && order.otherItems!.isNotEmpty)
-                  _buildDetailRow(
-                      Icons.add_shopping_cart_outlined, order.otherItems!),
-                if (order.address != null && order.address!.isNotEmpty)
-                  _buildDetailRow(Icons.location_on_outlined, order.address!),
-                if (order.phoneNumber != null &&
-                    order.phoneNumber!.isNotEmpty)
-                  _buildDetailRow(Icons.phone_outlined, order.phoneNumber!),
-                const SizedBox(height: 8),
-                _buildOrderActionButtons(order),
-              ],
-            ),
-          ),
-        );
-          }, // Use _filteredOrders
+              ),
+            );
+          },
           childCount: _filteredOrders.length,
         ),
       ),
@@ -755,7 +761,8 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
               icon: const Icon(Icons.cancel_outlined, size: 18),
               label: const Text('Batalkan'),
               onPressed: () => _cancelOrder(order),
-              style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
+              style:
+                  TextButton.styleFrom(foregroundColor: Colors.red.shade700),
             ),
           ],
         );
@@ -877,11 +884,13 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
           icon: const Icon(Icons.note_add_outlined),
           label: const Text('Catat Pesanan Masuk'),
           onPressed: () {
-            Navigator.push(context,
-                    MaterialPageRoute(builder: (context) => const OrderInputScreen()))
+            Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const OrderInputScreen()))
                 .then((saved) {
               if (saved == true) {
-                _loadOfflineData(); // Muat ulang data untuk memperbarui daftar pesanan (langkah berikutnya)
+                _loadOfflineData();
               }
             });
           },
@@ -897,15 +906,17 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
           icon: const Icon(Icons.add_chart),
           label: const Text('Input Penjualan Harian'),
           onPressed: () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const DailySalesInputScreen()))
+            Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const DailySalesInputScreen()))
                 .then((_) {
-              _loadOfflineData(); // Muat ulang data setelah kembali dari input penjualan
+              _loadOfflineData();
             });
           },
           style: ElevatedButton.styleFrom(
-            padding:
-                const EdgeInsets.symmetric(vertical: 16), // Tambah padding vertikal
-            textStyle: const TextStyle(fontSize: 16), // Ukuran teks tombol
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            textStyle: const TextStyle(fontSize: 16),
           ),
         ),
         const SizedBox(height: 12),
@@ -913,10 +924,13 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
           icon: const Icon(Icons.inventory_2_outlined),
           label: const Text('Input Galon Kosong Kembali'),
           onPressed: () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const EmptyGallonInputScreen()))
+            Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const EmptyGallonInputScreen()))
                 .then((saved) {
               if (saved == true) {
-                _loadOfflineData(); // Muat ulang data jika ada data yang disimpan
+                _loadOfflineData();
               }
             });
           },

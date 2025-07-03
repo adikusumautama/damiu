@@ -4,6 +4,8 @@ import 'package:damiu/models/customer_model.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
+// Import FirestoreService
+import 'package:damiu/services/firestore_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -24,6 +26,8 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
 
   bool _isLoading = false;
   final DatabaseHelper _dbHelper = DatabaseHelper();
+  // Inisialisasi FirestoreService
+  final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
   List<Customer> _allCustomers = [];
 
@@ -50,6 +54,7 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
     super.dispose();
   }
 
+  // MODIFIKASI FUNGSI INI
   Future<void> _saveOrder() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
@@ -67,7 +72,7 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
         return;
       }
 
-      // --- LOGIKA BARU: Simpan/update data pelanggan ---
+      // 1. Simpan/update data pelanggan di database lokal
       final newCustomer = Customer(
         name: _customerNameController.text.trim(),
         address: _addressController.text.trim().isNotEmpty
@@ -79,8 +84,11 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
         createdAt: DateTime.now(),
       );
       await _dbHelper.upsertCustomer(newCustomer);
-      // --- AKHIR LOGIKA BARU ---
+      // Sinkronkan data pelanggan ini ke Firestore (tanpa menunggu selesai)
+      _firestoreService.upsertCustomer(newCustomer);
 
+
+      // 2. Buat objek pesanan
       final newOrder = Order(
         customerName: _customerNameController.text.trim(),
         gallonQuantity: int.parse(_gallonQuantityController.text),
@@ -93,13 +101,32 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
         phoneNumber: _phoneController.text.trim().isNotEmpty
             ? _phoneController.text.trim()
             : null,
-        status: OrderStatus.pending, // Status default
+        status: OrderStatus.pending,
         createdAt: DateTime.now(),
         employeeUid: employeeUid,
       );
 
       try {
+        // 3. Simpan pesanan ke database lokal (prioritas utama)
         await _dbHelper.insertOrder(newOrder);
+
+        // 4. Kirim pesanan ke Firestore (tanpa memblokir UI)
+        _firestoreService.addOrder(newOrder).then((error) {
+          if (error != null) {
+            // Jika gagal, tampilkan notifikasi tanpa mengganggu alur utama
+            print("Gagal sinkronisasi pesanan ke Firestore: $error");
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text(
+                        'Gagal sinkronisasi pesanan ke server. Data tersimpan lokal.'),
+                    backgroundColor: Colors.orange),
+              );
+            }
+          }
+        });
+
+        // 5. Tampilkan pesan sukses dan kembali ke halaman sebelumnya
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Pesanan berhasil dicatat!')),
@@ -119,6 +146,7 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ... (UI tidak ada perubahan, jadi saya potong untuk keringkasan)
     return Scaffold(
       appBar: AppBar(
         title: const Text('Catat Pesanan Masuk'),
@@ -136,14 +164,10 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              // --- GANTI TEXTFORMFIELD DENGAN AUTOCOMPLETE ---
               Autocomplete<Customer>(
                 displayStringForOption: (Customer option) => option.name,
                 optionsBuilder: (TextEditingValue textEditingValue) {
-                  // Sinkronkan teks yang diketik ke controller kita secara real-time.
                   _customerNameController.text = textEditingValue.text;
-                  // Jika pengguna menghapus teks, bersihkan juga field lain
-                  // untuk mencegah data pelanggan lama menempel pada pelanggan baru.
                   if (textEditingValue.text.isEmpty) {
                     _addressController.clear();
                     _phoneController.clear();
@@ -152,16 +176,20 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
                     return const Iterable<Customer>.empty();
                   }
                   return _allCustomers.where((Customer option) {
-                    return option.name.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                    return option.name
+                        .toLowerCase()
+                        .contains(textEditingValue.text.toLowerCase());
                   });
                 },
                 onSelected: (Customer selection) {
-                  // Auto-fill data saat pelanggan dipilih
                   _customerNameController.text = selection.name;
                   _addressController.text = selection.address ?? '';
                   _phoneController.text = selection.phoneNumber ?? '';
                 },
-                fieldViewBuilder: (BuildContext context, TextEditingController fieldController, FocusNode fieldFocusNode, VoidCallback onFieldSubmitted) {
+                fieldViewBuilder: (BuildContext context,
+                    TextEditingController fieldController,
+                    FocusNode fieldFocusNode,
+                    VoidCallback onFieldSubmitted) {
                   return TextFormField(
                     controller: fieldController,
                     focusNode: fieldFocusNode,
@@ -171,7 +199,8 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
                       prefixIcon: Icon(Icons.person_search_outlined),
                     ),
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty) return 'Nama pelanggan tidak boleh kosong';
+                      if (value == null || value.trim().isEmpty)
+                        return 'Nama pelanggan tidak boleh kosong';
                       return null;
                     },
                   );
@@ -191,7 +220,8 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
                   if (value == null || value.isEmpty) {
                     return 'Jumlah galon tidak boleh kosong';
                   }
-                  if (int.tryParse(value) == null || int.parse(value) <= 0) {
+                  if (int.tryParse(value) == null ||
+                      int.parse(value) <= 0) {
                     return 'Masukkan jumlah yang valid';
                   }
                   return null;

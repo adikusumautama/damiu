@@ -1,5 +1,8 @@
 // lib/models/order_model.dart
 
+// TAMBAHKAN IMPORT INI
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class Order {
   final int? id; // Kunci utama untuk SQLite
   final String customerName;
@@ -39,6 +42,23 @@ class Order {
       'employee_uid': employeeUid,
     };
   }
+
+  // --- METHOD BARU YANG DITAMBAHKAN ---
+  Map<String, dynamic> toMapForFirestore() {
+    return {
+      // id lokal tidak dikirim ke firestore
+      'customerName': customerName,
+      'gallonQuantity': gallonQuantity,
+      'otherItems': otherItems,
+      'address': address,
+      'phoneNumber': phoneNumber,
+      'status': status,
+      'createdAt': Timestamp.fromDate(createdAt), // Gunakan Timestamp
+      'deliveredAt': deliveredAt != null ? Timestamp.fromDate(deliveredAt!) : null,
+      'employeeUid': employeeUid,
+    };
+  }
+  // --- AKHIR METHOD BARU ---
 
   factory Order.fromMap(Map<String, dynamic> map) {
     return Order(
