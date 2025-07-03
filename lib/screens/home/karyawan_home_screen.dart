@@ -6,7 +6,6 @@ import 'package:damiu/models/daily_stock_model.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/models/user_model.dart';
 import 'package:damiu/screens/other/customer_book_screen.dart';
-import 'package:damiu/screens/other/daily_sales_input_screen.dart';
 import 'package:damiu/screens/other/empty_gallon_input_screen.dart';
 import 'package:damiu/screens/other/karyawan_profile_screen.dart';
 import 'package:damiu/screens/other/local_sales_management_screen.dart'
@@ -246,9 +245,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
   late DateTime _today;
   late Stream<List<Order>> _ordersStream;
 
-  int _totalGallonsOut = 0;
   int _totalGallonsIn = 0;
-  int _deliveryCountToday = 0;
   bool _isLoading = true;
   bool _isDialogShown = false;
   Stream<DailyStock?>? _firestoreStockStream;
@@ -289,7 +286,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
       _ordersStream = _firestoreService.getTodaysOrdersStream();
       _isLoading = true;
     });
-    await _loadDeliveryStats();
+    await _loadReturnedGallons();
     if (mounted) {
       setState(() {
         _isLoading = false;
@@ -297,19 +294,14 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     }
   }
 
-  Future<void> _loadDeliveryStats() async {
+  Future<void> _loadReturnedGallons() async {
     final localLogs = await _dbHelper.getAllDeliveryLogsForDate(_today);
-    final totalOut = localLogs.fold<int>(0, (sum, log) => sum + log.gallons);
     final totalIn =
         localLogs.fold<int>(0, (sum, log) => sum + log.emptyGallonsReturned);
-    final deliveryCount =
-        localLogs.where((log) => !log.isNoDeliveryMarker).length;
 
     if (mounted) {
       setState(() {
-        _totalGallonsOut = totalOut;
         _totalGallonsIn = totalIn;
-        _deliveryCountToday = deliveryCount;
       });
     }
   }
@@ -532,6 +524,12 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                   .where((o) => o.status == OrderStatus.delivered)
                   .toList();
 
+              // --- PERHITUNGAN STATISTIK BARU ---
+              final totalGallonsOut = completedOrders.fold<int>(
+                  0, (sum, order) => sum + order.gallonQuantity);
+              final deliveryCount = completedOrders.length;
+              // --- AKHIR PERHITUNGAN ---
+
               return FutureBuilder(
                   future: _syncLocalOrders(allTodaysOrders),
                   builder: (context, syncSnapshot) {
@@ -548,7 +546,8 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                                   crossAxisAlignment:
                                       CrossAxisAlignment.stretch,
                                   children: [
-                                    _buildStockInfoCardStream(),
+                                    _buildStockInfoCardStream(
+                                        totalGallonsOut, deliveryCount),
                                     const SizedBox(height: 16),
                                     _buildActionButtons(),
                                     const Divider(height: 32, thickness: 1),
@@ -568,7 +567,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                                   tabs: [
                                     Tab(
                                         text:
-                                            'Pesanan (${pendingOrders.length})'),
+                                            'Belum Diantar (${pendingOrders.length})'),
                                     Tab(
                                         text:
                                             'Diantar (${inDeliveryOrders.length})'),
@@ -602,7 +601,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
           );
   }
 
-  Widget _buildStockInfoCardStream() {
+  Widget _buildStockInfoCardStream(int totalGallonsOut, int deliveryCount) {
     return StreamBuilder<DailyStock?>(
       stream: _firestoreStockStream,
       builder: (context, snapshot) {
@@ -617,8 +616,8 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
           });
         }
 
-        return _buildStockInfoCard(dailyStock, _totalGallonsOut,
-            _totalGallonsIn, _deliveryCountToday);
+        return _buildStockInfoCard(
+            dailyStock, totalGallonsOut, _totalGallonsIn, deliveryCount);
       },
     );
   }
@@ -726,6 +725,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
       DailyStock? stock, int totalOut, int totalIn, int deliveryCount) {
     final initialStock = stock?.initialStock ?? 0;
     final currentStock = initialStock - totalOut + totalIn;
+    final stockDifference = currentStock - initialStock;
 
     final Color stockColor;
     if (currentStock <= 0) {
@@ -779,12 +779,25 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                 padding: const EdgeInsets.only(top: 12.0),
                 child: Center(
                   child: Text(
-                    'Persediaan saat ini sangat menipis!',
+                    'Stok galon sangat menipis!',
                     style: TextStyle(
                         color: Colors.orange.shade900,
                         fontWeight: FontWeight.bold,
                         fontStyle: FontStyle.italic),
                     textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            if (stockDifference > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 12.0),
+                child: Center(
+                  child: Text(
+                    'Ada +$stockDifference galon lebih, sehingga total persediaan sekarang adalah $currentStock Galon.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: Colors.green.shade900,
+                        fontStyle: FontStyle.italic),
                   ),
                 ),
               ),
@@ -914,24 +927,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
         ),
         const SizedBox(height: 12),
         ElevatedButton.icon(
-          icon: const Icon(Icons.add_chart),
-          label: const Text('Input Penjualan Harian'),
-          onPressed: () {
-            Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const DailySalesInputScreen()))
-                .then((_) {
-              _loadDeliveryStats();
-            });
-          },
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            textStyle: const TextStyle(fontSize: 16),
-          ),
-        ),
-        const SizedBox(height: 12),
-        ElevatedButton.icon(
           icon: const Icon(Icons.inventory_2_outlined),
           label: const Text('Input Galon Kosong Kembali'),
           onPressed: () {
@@ -941,7 +936,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                         builder: (context) => const EmptyGallonInputScreen()))
                 .then((saved) {
               if (saved == true) {
-                _loadDeliveryStats();
+                _loadReturnedGallons();
               }
             });
           },
@@ -957,7 +952,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
   }
 }
 
-// --- PERUBAHAN PADA _SliverAppBarDelegate ---
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   _SliverAppBarDelegate(this._tabBar);
 
@@ -971,7 +965,6 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
-    // Membungkus TabBar dengan Container untuk styling
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
