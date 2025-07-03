@@ -7,8 +7,7 @@ import 'package:damiu/screens/other/customer_book_screen.dart';
 import 'package:damiu/screens/other/daily_sales_input_screen.dart';
 import 'package:damiu/screens/other/empty_gallon_input_screen.dart';
 import 'package:damiu/screens/other/karyawan_profile_screen.dart';
-import 'package:damiu/screens/other/local_sales_management_screen.dart'
-    hide Padding, SizedBox;
+import 'package:damiu/screens/other/local_sales_management_screen.dart' hide Padding, SizedBox;
 import 'package:damiu/screens/other/order_input_screen.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
@@ -247,13 +246,9 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
 
   late DateTime _today;
 
-  List<Order> _todaysOrders = [];
-  List<Order> _filteredOrders = [];
-  String _selectedStatusFilter = 'Semua';
-  int _allCount = 0,
-      _pendingCount = 0,
-      _inDeliveryCount = 0,
-      _deliveredCount = 0;
+  List<Order> _activeOrders = [];
+  List<Order> _completedOrders = [];
+
   int _totalGallonsOut = 0;
   int _totalGallonsIn = 0;
   int _deliveryCountToday = 0;
@@ -293,14 +288,56 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     super.dispose();
   }
 
-  // --- PERUBAHAN DI SINI ---
   Future<void> _initializeAndLoadData() async {
     setState(() {
       _firestoreStockStream = _firestoreService.getDailyStockStream(_today);
     });
     await _loadOfflineData();
   }
-  // --- AKHIR PERUBAHAN ---
+
+  Future<void> _loadOfflineData() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+    });
+
+    final localLogs = await _dbHelper.getAllDeliveryLogsForDate(_today);
+    final allTodaysOrders = await _dbHelper.getTodaysOrders();
+
+    final totalOut = localLogs.fold<int>(0, (sum, log) => sum + log.gallons);
+    final totalIn =
+        localLogs.fold<int>(0, (sum, log) => sum + log.emptyGallonsReturned);
+    final deliveryCount =
+        localLogs.where((log) => !log.isNoDeliveryMarker).length;
+
+    final active = allTodaysOrders
+        .where((o) =>
+            o.status == OrderStatus.pending ||
+            o.status == OrderStatus.inDelivery)
+        .toList();
+    final completed = allTodaysOrders
+        .where((o) => o.status == OrderStatus.delivered)
+        .toList();
+
+    if (mounted) {
+      setState(() {
+        _totalGallonsOut = totalOut;
+        _totalGallonsIn = totalIn;
+        _deliveryCountToday = deliveryCount;
+        _activeOrders = active;
+        _completedOrders = completed;
+        _isLoading = false;
+      });
+
+      final stockData = await _firestoreStockStream?.first;
+      if (stockData == null && !_isDialogShown) {
+        _isDialogShown = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showSetInitialStockDialog(0);
+        });
+      }
+    }
+  }
 
   Future<void> _showSetInitialStockDialog(int currentFilledStock) async {
     final TextEditingController filledStockController = TextEditingController(
@@ -401,6 +438,174 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     ).then((_) {
       _isDialogShown = false;
     });
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : DefaultTabController(
+            length: 2,
+            child: NestedScrollView(
+              headerSliverBuilder: (context, innerBoxIsScrolled) {
+                return [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildStockInfoCardStream(),
+                          const SizedBox(height: 16),
+                          _buildActionButtons(),
+                          const Divider(height: 32, thickness: 1),
+                          const Text(
+                            'Daftar Pesanan Hari Ini',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  SliverPersistentHeader(
+                    delegate: _SliverAppBarDelegate(
+                      TabBar(
+                        tabs: [
+                          Tab(text: 'Perlu Diantar (${_activeOrders.length})'),
+                          Tab(text: 'Selesai (${_completedOrders.length})'),
+                        ],
+                      ),
+                    ),
+                    pinned: true,
+                  ),
+                ];
+              },
+              body: TabBarView(
+                children: [
+                  _buildOrderListView(_activeOrders,
+                      emptyMessage:
+                          'Tidak ada pesanan yang perlu diantar saat ini.'),
+                  _buildOrderListView(_completedOrders,
+                      emptyMessage: 'Belum ada pesanan yang selesai.'),
+                ],
+              ),
+            ),
+          );
+  }
+
+  Widget _buildStockInfoCardStream() {
+    return StreamBuilder<DailyStock?>(
+      stream: _firestoreStockStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !_isLoading) {
+          return const LinearProgressIndicator();
+        }
+        final dailyStock = snapshot.data;
+        return _buildStockInfoCard(dailyStock, _totalGallonsOut,
+            _totalGallonsIn, _deliveryCountToday);
+      },
+    );
+  }
+
+  Widget _buildOrderListView(List<Order> orders,
+      {required String emptyMessage}) {
+    if (orders.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _initializeAndLoadData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Container(
+            height: MediaQuery.of(context).size.height / 2,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Text(
+                  emptyMessage,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _initializeAndLoadData,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: orders.length,
+        itemBuilder: (context, index) {
+          final order = orders[index];
+          return _buildOrderItemCard(order);
+        },
+      ),
+    );
+  }
+
+  Card _buildOrderItemCard(Order order) {
+    Color getStatusColor(String status) {
+      switch (status) {
+        case OrderStatus.delivered:
+          return Colors.green;
+        case OrderStatus.inDelivery:
+          return Colors.orange;
+        case OrderStatus.pending:
+        default:
+          return Colors.blue;
+      }
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    order.customerName,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Chip(
+                  label: Text(
+                    order.status,
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                  backgroundColor: getStatusColor(order.status),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ],
+            ),
+            const Divider(),
+            _buildDetailRow(
+                Icons.local_drink_outlined, '${order.gallonQuantity} Galon'),
+            if (order.otherItems != null && order.otherItems!.isNotEmpty)
+              _buildDetailRow(
+                  Icons.add_shopping_cart_outlined, order.otherItems!),
+            if (order.address != null && order.address!.isNotEmpty)
+              _buildDetailRow(Icons.location_on_outlined, order.address!),
+            if (order.phoneNumber != null && order.phoneNumber!.isNotEmpty)
+              _buildDetailRow(Icons.phone_outlined, order.phoneNumber!),
+            const SizedBox(height: 8),
+            _buildOrderActionButtons(order),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildStockInfoCard(
@@ -512,261 +717,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  void _updateFilterCounts() {
-    _allCount = _todaysOrders.length;
-    _pendingCount =
-        _todaysOrders.where((o) => o.status == OrderStatus.pending).length;
-    _inDeliveryCount =
-        _todaysOrders.where((o) => o.status == OrderStatus.inDelivery).length;
-    _deliveredCount =
-        _todaysOrders.where((o) => o.status == OrderStatus.delivered).length;
-  }
-
-  void _filterOrders() {
-    if (!mounted) return;
-    setState(() {
-      if (_selectedStatusFilter == 'Semua') {
-        _filteredOrders = List.from(_todaysOrders);
-      } else {
-        _filteredOrders = _todaysOrders
-            .where((order) => order.status == _selectedStatusFilter)
-            .toList();
-      }
-    });
-  }
-
-  Future<void> _loadOfflineData() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-    });
-
-    final localLogs = await _dbHelper.getAllDeliveryLogsForDate(_today);
-    final totalOut = localLogs.fold<int>(0, (sum, log) => sum + log.gallons);
-    final totalIn =
-        localLogs.fold<int>(0, (sum, log) => sum + log.emptyGallonsReturned);
-
-    final orders = await _dbHelper.getTodaysOrders();
-    final deliveryCount =
-        localLogs.where((log) => !log.isNoDeliveryMarker).length;
-
-    if (mounted) {
-      setState(() {
-        _totalGallonsOut = totalOut;
-        _totalGallonsIn = totalIn;
-        _deliveryCountToday = deliveryCount;
-        _todaysOrders = orders;
-        _updateFilterCounts();
-        _filterOrders();
-        _isLoading = false;
-      });
-
-      final stockData = await _firestoreStockStream?.first;
-      if (stockData == null && !_isDialogShown) {
-        _isDialogShown = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showSetInitialStockDialog(0);
-        });
-      }
-    }
-  }
-
-  Widget _buildFilterChips() {
-    Widget buildChip(String label, int count) {
-      final isSelected = _selectedStatusFilter == label;
-      return Padding(
-        padding: const EdgeInsets.only(right: 8.0),
-        child: ChoiceChip(
-          label: Text('$label ($count)'),
-          selected: isSelected,
-          onSelected: (selected) {
-            if (selected) {
-              setState(() {
-                _selectedStatusFilter = label;
-                _filterOrders();
-              });
-            }
-          },
-          selectedColor: Theme.of(context).primaryColor,
-          labelStyle: TextStyle(
-            color: isSelected ? Colors.white : Colors.black87,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          ),
-          backgroundColor: Colors.grey[200],
-          shape: StadiumBorder(
-            side: BorderSide(
-              color: isSelected
-                  ? Theme.of(context).primaryColor
-                  : Colors.grey[400]!,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
-        children: [
-          buildChip('Semua', _allCount),
-          buildChip(OrderStatus.pending, _pendingCount),
-          buildChip(OrderStatus.inDelivery, _inDeliveryCount),
-          buildChip(OrderStatus.delivered, _deliveredCount),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : RefreshIndicator(
-            onRefresh: _initializeAndLoadData,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        StreamBuilder<DailyStock?>(
-                          stream: _firestoreStockStream,
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState ==
-                                    ConnectionState.waiting &&
-                                !_isLoading) {
-                              return const LinearProgressIndicator();
-                            }
-
-                            final dailyStock = snapshot.data;
-
-                            return _buildStockInfoCard(
-                                dailyStock,
-                                _totalGallonsOut,
-                                _totalGallonsIn,
-                                _deliveryCountToday);
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        _buildActionButtons(),
-                        const Divider(height: 32, thickness: 1),
-                        const Text(
-                          'Daftar Pesanan Hari Ini',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        _buildFilterChips(),
-                      ],
-                    ),
-                  ),
-                ),
-                _buildOrderListSliver(),
-              ],
-            ),
-          );
-  }
-
-  Widget _buildOrderListSliver() {
-    Color getStatusColor(String status) {
-      switch (status) {
-        case OrderStatus.delivered:
-          return Colors.green;
-        case OrderStatus.inDelivery:
-          return Colors.orange;
-        case OrderStatus.pending:
-        default:
-          return Colors.blue;
-      }
-    }
-
-    if (_filteredOrders.isEmpty) {
-      return SliverToBoxAdapter(
-        child: Padding(
-          padding:
-              const EdgeInsets.symmetric(vertical: 48.0, horizontal: 16.0),
-          child: Center(
-            child: Text(
-              _todaysOrders.isEmpty
-                  ? 'Belum ada pesanan yang dicatat hari ini.\nTarik ke bawah untuk memuat ulang.'
-                  : 'Tidak ada pesanan dengan status "$_selectedStatusFilter".',
-              style: const TextStyle(color: Colors.grey),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final order = _filteredOrders[index];
-            return Card(
-              margin: const EdgeInsets.symmetric(vertical: 6.0),
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            order.customerName,
-                            style: const TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Chip(
-                          label: Text(
-                            order.status,
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 12),
-                          ),
-                          backgroundColor: getStatusColor(order.status),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ],
-                    ),
-                    const Divider(),
-                    _buildDetailRow(Icons.local_drink_outlined,
-                        '${order.gallonQuantity} Galon'),
-                    if (order.otherItems != null &&
-                        order.otherItems!.isNotEmpty)
-                      _buildDetailRow(
-                          Icons.add_shopping_cart_outlined, order.otherItems!),
-                    if (order.address != null && order.address!.isNotEmpty)
-                      _buildDetailRow(
-                          Icons.location_on_outlined, order.address!),
-                    if (order.phoneNumber != null &&
-                        order.phoneNumber!.isNotEmpty)
-                      _buildDetailRow(
-                          Icons.phone_outlined, order.phoneNumber!),
-                    const SizedBox(height: 8),
-                    _buildOrderActionButtons(order),
-                  ],
-                ),
-              ),
-            );
-          },
-          childCount: _filteredOrders.length,
-        ),
       ),
     );
   }
@@ -963,5 +913,30 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
         ),
       ],
     );
+  }
+}
+
+class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
+  _SliverAppBarDelegate(this._tabBar);
+
+  final TabBar _tabBar;
+
+  @override
+  double get minExtent => _tabBar.preferredSize.height;
+  @override
+  double get maxExtent => _tabBar.preferredSize.height;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: _tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
+    return false;
   }
 }
