@@ -1,105 +1,76 @@
 // lib/screens/other/daily_sales_input_screen.dart
-// This screen is now repurposed to handle the delivery process based on recorded orders.
 
-import 'package:damiu/models/order_model.dart';
-import 'package:flutter/material.dart';
 import 'package:damiu/models/delivery_log_model.dart';
-import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/services/auth_service.dart';
+import 'package:damiu/services/database_helper.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class DailySalesInputScreen extends StatefulWidget {
   const DailySalesInputScreen({super.key});
 
   @override
-  State<DailySalesInputScreen> createState() => _DeliveryProcessScreenState();
+  State<DailySalesInputScreen> createState() => _DailySalesInputScreenState();
 }
 
-class _DeliveryProcessScreenState extends State<DailySalesInputScreen> {
+class _DailySalesInputScreenState extends State<DailySalesInputScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _gallonQuantityController = TextEditingController();
+  bool _isLoading = false;
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final AuthService _authService = AuthService();
-  List<Order> _pendingOrders = [];
-  bool _isLoading = true;
 
   @override
-  void initState() {
-    super.initState();
-    _loadPendingOrders();
+  void dispose() {
+    _gallonQuantityController.dispose();
+    super.dispose();
   }
 
-  Future<void> _loadPendingOrders() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-    });
-    final allOrders = await _dbHelper.getTodaysOrders();
-    // Filter for orders that are 'Belum Diantar'
-    final pending =
-        allOrders.where((order) => order.status == OrderStatus.pending).toList();
-    if (mounted) {
+  Future<void> _saveDeliveryLog() async {
+    if (_formKey.currentState!.validate()) {
       setState(() {
-        _pendingOrders = pending;
-        _isLoading = false;
+        _isLoading = true;
       });
-    }
-  }
 
-  Future<void> _processDelivery(Order order) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Konfirmasi Pengantaran'),
-        content: Text('Antar pesanan untuk ${order.customerName}? Stok galon akan dikurangi.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Ya, Antar'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    final String? employeeUid = _authService.getCurrentUser()?.uid;
-    if (employeeUid == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error: Pengguna tidak login.')),
-        );
-        setState(() => _isLoading = false);
+      final String? employeeUid = _authService.getCurrentUser()?.uid;
+      if (employeeUid == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error: Pengguna tidak ditemukan.')),
+          );
+          setState(() => _isLoading = false);
+        }
+        return;
       }
-      return;
-    }
 
-    // 1. Create a delivery log to track stock movement
-    final deliveryLog = DeliveryLogItem(
-      timestamp: DateTime.now(),
-      gallons: order.gallonQuantity,
-      emptyGallonsReturned: 0, // This is handled by a separate flow
-      employeeUid: employeeUid,
-      isSummarized: false,
-    );
-    await _dbHelper.insertDeliveryLog(deliveryLog);
-
-    // 2. Update the order status to 'In Delivery'
-    await _dbHelper.updateOrderStatus(order.id!, OrderStatus.inDelivery);
-
-    // 3. Provide feedback and refresh the UI
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                'Pesanan untuk ${order.customerName} sedang diantar.')),
+      final logItem = DeliveryLogItem(
+        timestamp: DateTime.now(),
+        gallons: int.parse(_gallonQuantityController.text),
+        emptyGallonsReturned: 0, // Ini adalah log pengeluaran, jadi galon kembali 0
+        employeeUid: employeeUid,
       );
-      _loadPendingOrders(); // This will refresh the list and remove the processed order
+
+      try {
+        await _dbHelper.insertDeliveryLog(logItem);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Log pengantaran berhasil disimpan!')),
+          );
+          Navigator.pop(context, true);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal menyimpan log: $e')),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     }
   }
 
@@ -107,53 +78,57 @@ class _DeliveryProcessScreenState extends State<DailySalesInputScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pilih Pesanan untuk Diantar'),
+        title: const Text('Input Penjualan/Pengantaran'),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _pendingOrders.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24.0),
-                    child: Text(
-                      'Tidak ada pesanan yang perlu diantar saat ini.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadPendingOrders,
-                  child: ListView.builder(
-                    itemCount: _pendingOrders.length,
-                    itemBuilder: (context, index) {
-                      final order = _pendingOrders[index];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          title: Text(order.customerName,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('${order.gallonQuantity} Galon'),
-                              if (order.address != null) Text(order.address!),
-                            ],
-                          ),
-                          trailing: ElevatedButton(
-                            onPressed:
-                                _isLoading ? null : () => _processDelivery(order),
-                            child: const Text('Antar'),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Catat jumlah galon yang keluar untuk diantar.',
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              TextFormField(
+                controller: _gallonQuantityController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Jumlah Galon Keluar',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.local_drink_outlined),
                 ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Jumlah galon tidak boleh kosong';
+                  }
+                  if (int.tryParse(value) == null || int.parse(value) <= 0) {
+                    return 'Masukkan jumlah yang valid';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 24),
+              _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ElevatedButton.icon(
+                      icon: const Icon(Icons.save_outlined),
+                      label: const Text('Simpan Log'),
+                      onPressed: _saveDeliveryLog,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        textStyle: const TextStyle(fontSize: 16),
+                      ),
+                    ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

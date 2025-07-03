@@ -15,16 +15,13 @@ import 'package:damiu/screens/other/order_input_screen.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/services/firestore_service.dart';
-// --- PERUBAHAN DI SINI ---
 import 'package:damiu/services/sync_service.dart';
-// --- AKHIR PERUBAHAN ---
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 class KaryawanHomeScreen extends StatefulWidget {
   const KaryawanHomeScreen({super.key});
-
   @override
   State<KaryawanHomeScreen> createState() => _KaryawanHomeScreenState();
 }
@@ -414,6 +411,18 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     ).then((_) {
       _isDialogShown = false;
     });
+  }
+
+  Future<void> _startDelivery(Order order) async {
+    if (order.firestoreId != null) {
+      final error = await _firestoreService.updateOrderStatus(
+          order.firestoreId!, OrderStatus.inDelivery);
+      if (mounted && error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memulai pengantaran: $error')),
+        );
+      }
+    }
   }
 
   Future<void> _completeDelivery(Order order) async {
@@ -815,7 +824,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
             TextButton.icon(
               icon: const Icon(Icons.local_shipping_outlined, size: 18),
               label: const Text('Mulai Antar'),
-              onPressed: () {}, // Nanti bisa ditambahkan fungsi untuk update ke 'inDelivery'
+              onPressed: () => _startDelivery(order),
             ),
             const SizedBox(width: 8),
             TextButton.icon(
