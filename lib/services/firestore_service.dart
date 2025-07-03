@@ -182,6 +182,34 @@ class FirestoreService {
 
   // --- Operasi untuk Penjualan Harian (Daily Sale) ---
 
+  Future<String?> recordSale(int quantity, int deliveryCount) async {
+    final docId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final docRef = _db.collection('daily_sales').doc(docId);
+
+    try {
+      await docRef.set({
+        'date': Timestamp.now(),
+        'day_of_week': DateTime.now().weekday,
+        'quantity': FieldValue.increment(quantity),
+        'delivery_count': FieldValue.increment(deliveryCount),
+      }, SetOptions(merge: true));
+      return null;
+    } catch (e) {
+      print('Error recording sale: $e');
+      return e.toString();
+    }
+  }
+
+  Stream<DailySale> getTodaysDailySaleStream() {
+    final docId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    return _db.collection('daily_sales').doc(docId).snapshots().map((snapshot) {
+      if (snapshot.exists) {
+        return DailySale.fromMap(snapshot.data() as Map<String, dynamic>);
+      }
+      return DailySale(date: DateTime.now(), quantity: 0, deliveryCount: 0);
+    });
+  }
+
   Stream<List<DailySale>> getDailySalesStream() {
     return _db
         .collection('daily_sales')

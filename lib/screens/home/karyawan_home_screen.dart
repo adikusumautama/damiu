@@ -2,14 +2,14 @@
 
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/models/daily_stock_model.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/models/user_model.dart';
 import 'package:damiu/screens/other/customer_book_screen.dart';
 import 'package:damiu/screens/other/empty_gallon_input_screen.dart';
 import 'package:damiu/screens/other/karyawan_profile_screen.dart';
-import 'package:damiu/screens/other/local_sales_management_screen.dart'
-    hide Padding, SizedBox;
+import 'package:damiu/screens/other/local_sales_management_screen.dart' hide Padding, SizedBox;
 import 'package:damiu/screens/other/order_input_screen.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
@@ -245,7 +245,8 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
   late DateTime _today;
   late Stream<List<Order>> _ordersStream;
   late Stream<DailyStock?> _stockStream;
-
+  late Stream<DailySale> _dailySaleStream;
+  
   bool _isLoading = true;
   bool _isDialogShown = false;
 
@@ -257,11 +258,12 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
         DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
     _initializeStreams();
   }
-
+  
   void _initializeStreams() {
     setState(() {
       _stockStream = _firestoreService.getDailyStockStream(_today);
       _ordersStream = _firestoreService.getTodaysOrdersStream();
+      _dailySaleStream = _firestoreService.getTodaysDailySaleStream();
       _isLoading = false;
     });
   }
@@ -411,15 +413,19 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     );
 
     if (confirm == true && order.firestoreId != null) {
+      // 1. Ubah status pesanan menjadi 'delivered'
       final statusError = await _firestoreService.updateOrderStatus(
           order.firestoreId!, OrderStatus.delivered,
           setDeliveredTime: true);
 
       if (statusError == null) {
+        // 2. Jika berhasil, kurangi stok saat ini DAN catat penjualan
         final stockError = await _firestoreService.adjustCurrentStock(-order.gallonQuantity);
+        final saleError = await _firestoreService.recordSale(order.gallonQuantity, 1);
+        
         if (mounted) {
-          if (stockError != null) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal mengurangi stok: $stockError')));
+          if (stockError != null || saleError != null) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal memperbarui stok/penjualan: ${stockError ?? saleError}')));
           } else {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Pesanan untuk ${order.customerName} selesai.')));
           }
@@ -479,83 +485,83 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
         : StreamBuilder<List<Order>>(
             stream: _ordersStream,
             builder: (context, ordersSnapshot) {
-              return StreamBuilder<DailyStock?>(
-                stream: _stockStream,
-                builder: (context, stockSnapshot) {
-                  if (ordersSnapshot.connectionState == ConnectionState.waiting ||
-                      stockSnapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (ordersSnapshot.hasError || stockSnapshot.hasError) {
-                    return Center(child: Text("Error memuat data: ${ordersSnapshot.error ?? stockSnapshot.error}"));
-                  }
+              return StreamBuilder<DailySale>(
+                stream: _dailySaleStream,
+                builder: (context, saleSnapshot) {
+                  return StreamBuilder<DailyStock?>(
+                    stream: _stockStream,
+                    builder: (context, stockSnapshot) {
+                      if (ordersSnapshot.connectionState == ConnectionState.waiting ||
+                          saleSnapshot.connectionState == ConnectionState.waiting ||
+                          stockSnapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (ordersSnapshot.hasError || saleSnapshot.hasError || stockSnapshot.hasError) {
+                        return Center(child: Text("Error memuat data: ${ordersSnapshot.error ?? saleSnapshot.error ?? stockSnapshot.error}"));
+                      }
 
-                  final allTodaysOrders = ordersSnapshot.data ?? [];
-                  final dailyStock = stockSnapshot.data;
+                      final allTodaysOrders = ordersSnapshot.data ?? [];
+                      final todaysSale = saleSnapshot.data ?? DailySale(date: _today, quantity: 0, deliveryCount: 0);
+                      final dailyStock = stockSnapshot.data;
 
-                  final pendingOrders = allTodaysOrders
-                      .where((o) => o.status == OrderStatus.pending)
-                      .toList();
-                  final inDeliveryOrders = allTodaysOrders
-                      .where((o) => o.status == OrderStatus.inDelivery)
-                      .toList();
-                  final completedOrders = allTodaysOrders
-                      .where((o) => o.status == OrderStatus.delivered)
-                      .toList();
+                      final pendingOrders = allTodaysOrders.where((o) => o.status == OrderStatus.pending).toList();
+                      final inDeliveryOrders = allTodaysOrders.where((o) => o.status == OrderStatus.inDelivery).toList();
+                      final completedOrders = allTodaysOrders.where((o) => o.status == OrderStatus.delivered).toList();
 
-                  final totalGallonsOutToday = completedOrders.fold<int>(0, (sum, order) => sum + order.gallonQuantity);
-                  final deliveryCountToday = completedOrders.length;
-                  
-                  final initialStockToday = dailyStock?.initialStock ?? 0;
-                  final currentStock = dailyStock?.currentStock ?? 0;
-                  final totalGallonsInToday = (currentStock - initialStockToday) + totalGallonsOutToday;
+                      final totalGallonsOutToday = todaysSale.quantity;
+                      final deliveryCountToday = todaysSale.deliveryCount;
+                      
+                      final initialStockToday = dailyStock?.initialStock ?? 0;
+                      final currentStock = dailyStock?.currentStock ?? 0;
+                      final totalGallonsInToday = (currentStock - initialStockToday) + totalGallonsOutToday;
 
-                  return DefaultTabController(
-                    length: 3,
-                    child: NestedScrollView(
-                      headerSliverBuilder: (context, innerBoxIsScrolled) {
-                        return [
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.stretch,
-                                children: [
-                                  _buildStockInfoCard(dailyStock, totalGallonsOutToday, totalGallonsInToday, deliveryCountToday),
-                                  const SizedBox(height: 16),
-                                  _buildActionButtons(),
-                                  const Divider(height: 32, thickness: 1),
-                                  const Text(
-                                    'Daftar Pesanan Hari Ini',
-                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      return DefaultTabController(
+                        length: 3,
+                        child: NestedScrollView(
+                          headerSliverBuilder: (context, innerBoxIsScrolled) {
+                            return [
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      _buildStockInfoCard(dailyStock, totalGallonsOutToday, totalGallonsInToday, deliveryCountToday),
+                                      const SizedBox(height: 16),
+                                      _buildActionButtons(),
+                                      const Divider(height: 32, thickness: 1),
+                                      const Text(
+                                        'Daftar Pesanan Hari Ini',
+                                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
-                          SliverPersistentHeader(
-                            delegate: _SliverAppBarDelegate(
-                              TabBar(
-                                tabs: [
-                                  Tab(text: 'Belum Diantar (${pendingOrders.length})'),
-                                  Tab(text: 'Diantar (${inDeliveryOrders.length})'),
-                                  Tab(text: 'Selesai (${completedOrders.length})'),
-                                ],
+                              SliverPersistentHeader(
+                                delegate: _SliverAppBarDelegate(
+                                  TabBar(
+                                    tabs: [
+                                      Tab(text: 'Belum Diantar (${pendingOrders.length})'),
+                                      Tab(text: 'Diantar (${inDeliveryOrders.length})'),
+                                      Tab(text: 'Selesai (${completedOrders.length})'),
+                                    ],
+                                  ),
+                                ),
+                                pinned: true,
                               ),
-                            ),
-                            pinned: true,
+                            ];
+                          },
+                          body: TabBarView(
+                            children: [
+                              _buildOrderListView(pendingOrders, emptyMessage: 'Tidak ada pesanan yang perlu diantar.'),
+                              _buildOrderListView(inDeliveryOrders, emptyMessage: 'Tidak ada pesanan yang sedang diantar.'),
+                              _buildOrderListView(completedOrders, emptyMessage: 'Belum ada pesanan yang selesai hari ini.'),
+                            ],
                           ),
-                        ];
-                      },
-                      body: TabBarView(
-                        children: [
-                          _buildOrderListView(pendingOrders, emptyMessage: 'Tidak ada pesanan yang perlu diantar.'),
-                          _buildOrderListView(inDeliveryOrders, emptyMessage: 'Tidak ada pesanan yang sedang diantar.'),
-                          _buildOrderListView(completedOrders, emptyMessage: 'Belum ada pesanan yang selesai hari ini.'),
-                        ],
-                      ),
-                    ),
+                        ),
+                      );
+                    },
                   );
                 },
               );
