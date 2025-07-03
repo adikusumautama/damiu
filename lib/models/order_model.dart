@@ -14,6 +14,7 @@ class Order {
   final DateTime createdAt;
   final DateTime? deliveredAt;
   final String employeeUid;
+  final bool isSynced; // Penanda untuk sinkronisasi
 
   Order({
     this.id,
@@ -27,9 +28,10 @@ class Order {
     required this.createdAt,
     this.deliveredAt,
     required this.employeeUid,
+    this.isSynced = false, // Defaultnya adalah false (belum sinkron)
   });
 
-  // Method untuk konversi ke Map untuk database lokal (SQLite)
+  // Konversi ke Map untuk database lokal (SQLite)
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -43,10 +45,11 @@ class Order {
       'created_at': createdAt.toIso8601String(),
       'delivered_at': deliveredAt?.toIso8601String(),
       'employee_uid': employeeUid,
+      'is_synced': isSynced ? 1 : 0, // Simpan sebagai integer (0 atau 1)
     };
   }
 
-  // Factory untuk membuat objek dari Map database lokal (SQLite)
+  // Membuat objek dari Map database lokal (SQLite)
   factory Order.fromMap(Map<String, dynamic> map) {
     return Order(
       id: map['id'] as int?,
@@ -62,10 +65,11 @@ class Order {
           ? DateTime.parse(map['delivered_at'] as String)
           : null,
       employeeUid: map['employee_uid'] as String,
+      isSynced: (map['is_synced'] as int? ?? 0) == 1, // Baca dari integer
     );
   }
 
-  // Method untuk konversi ke Map untuk Firestore
+  // Konversi ke Map untuk Firestore
   Map<String, dynamic> toMapForFirestore() {
     return {
       'customerName': customerName,
@@ -81,7 +85,7 @@ class Order {
     };
   }
 
-  // Factory untuk membuat objek dari data Firestore
+  // Membuat objek dari data Firestore
   factory Order.fromFirestore(Map<String, dynamic> data, String documentId) {
     return Order(
       firestoreId: documentId,
@@ -96,6 +100,7 @@ class Order {
           ? (data['deliveredAt'] as Timestamp).toDate()
           : null,
       employeeUid: data['employeeUid'] as String,
+      isSynced: true, // Data dari Firestore selalu dianggap sudah sinkron
     );
   }
 }

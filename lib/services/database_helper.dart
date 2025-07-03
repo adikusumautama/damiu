@@ -1,13 +1,13 @@
 // lib/services/database_helper.dart
 
 import 'package:damiu/models/customer_model.dart';
-import 'package:damiu/models/order_model.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
-import 'package:damiu/models/delivery_log_model.dart';
 import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/models/daily_stock_model.dart';
+import 'package:damiu/models/delivery_log_model.dart';
+import 'package:damiu/models/order_model.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart';
+import 'package:sqflite/sqflite.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -28,7 +28,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -78,7 +78,8 @@ class DatabaseHelper {
         status TEXT NOT NULL,
         created_at TEXT NOT NULL,
         delivered_at TEXT,
-        employee_uid TEXT NOT NULL
+        employee_uid TEXT NOT NULL,
+        is_synced INTEGER NOT NULL DEFAULT 0
       )
     ''');
     await db.execute('''
@@ -160,6 +161,9 @@ class DatabaseHelper {
     if (oldVersion < 10) {
       await db.execute('ALTER TABLE orders ADD COLUMN firestore_id TEXT');
     }
+    if (oldVersion < 11) {
+      await db.execute('ALTER TABLE orders ADD COLUMN is_synced INTEGER NOT NULL DEFAULT 0');
+    }
   }
 
   // --- Operasi CRUD untuk DailySale ---
@@ -169,6 +173,20 @@ class DatabaseHelper {
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  Future<DailySale?> getDailySaleByDate(DateTime date) async {
+    final db = await database;
+    String dateString = DateFormat('yyyy-MM-dd').format(date);
+    final List<Map<String, dynamic>> maps = await db.query(
+      'daily_sales',
+      where: 'date = ?',
+      whereArgs: [dateString],
+    );
+    if (maps.isNotEmpty) {
+      return DailySale.fromMap(maps.first);
+    }
+    return null;
+  }
+  
   Future<List<DailySale>> getUnsyncedSales() async {
     Database db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -176,15 +194,6 @@ class DatabaseHelper {
       where: 'is_synced = ?',
       whereArgs: [0],
     );
-    return List.generate(maps.length, (i) {
-      return DailySale.fromMap(maps[i]);
-    });
-  }
-
-  Future<List<DailySale>> getAllSalesLocal() async {
-    Database db = await database;
-    final List<Map<String, dynamic>> maps =
-        await db.query('daily_sales', orderBy: 'date ASC');
     return List.generate(maps.length, (i) {
       return DailySale.fromMap(maps[i]);
     });
@@ -198,36 +207,6 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
-  }
-
-  Future<int> updateSale(DailySale sale) async {
-    Database db = await database;
-    return await db.update(
-      'daily_sales',
-      sale.toMap(),
-      where: 'id = ?',
-      whereArgs: [sale.id],
-      conflictAlgorithm: ConflictAlgorithm.rollback,
-    );
-  }
-
-  Future<int> deleteSale(int id) async {
-    Database db = await database;
-    return await db.delete(
-      'daily_sales',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
-
-  Future<int> deleteAllSales() async {
-    Database db = await database;
-    return await db.delete('daily_sales');
-  }
-
-  Future<int> deleteSyncedSales() async {
-    Database db = await database;
-    return await db.delete('daily_sales', where: 'is_synced = ?', whereArgs: [1]);
   }
 
   // --- Operasi untuk DeliveryLogItem ---
@@ -261,50 +240,21 @@ class DatabaseHelper {
     });
   }
 
+  Future<int> deleteDeliveryLog(int id) async {
+    Database db = await database;
+    return await db.delete('delivery_log', where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<int> deleteAllDeliveryLogs() async {
     Database db = await database;
     return await db.delete('delivery_log');
   }
-
-  Future<int> deleteDeliveryLog(int id) async {
-    Database db = await database;
-    return await db.delete(
-      'delivery_log',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
-
-  Future<int> updateDeliveryLog(DeliveryLogItem log) async {
-    Database db = await database;
-    return await db.update(
-      'delivery_log',
-      log.toMap(),
-      where: 'id = ?',
-      whereArgs: [log.id],
-    );
-  }
-
-  Future<int> markAllDeliveryLogsAsSummarizedByDate(DateTime date) async {
-    Database db = await database;
-    String dateString = DateFormat('yyyy-MM-dd').format(date);
-    return await db.update(
-      'delivery_log',
-      {'is_summarized': 1},
-      where: 'date(timestamp) = ? AND is_summarized = ?',
-      whereArgs: [dateString, 0],
-    );
-  }
-
+  
   Future<int> deleteSummarizedDeliveryLogs() async {
     Database db = await database;
-    return await db.delete(
-      'delivery_log',
-      where: 'is_summarized = ?',
-      whereArgs: [1],
-    );
+    return await db.delete('delivery_log', where: 'is_summarized = ?', whereArgs: [1]);
   }
-  
+
   // --- Operasi untuk DailyStock Lokal ---
   Future<int> upsertDailyStock(DailyStock stock) async {
     final db = await database;
@@ -315,15 +265,29 @@ class DatabaseHelper {
     );
   }
 
+  Future<DailyStock?> getDailyStock(DateTime date) async {
+    final db = await database;
+    String dateString = DateFormat('yyyy-MM-dd').format(date);
+    final List<Map<String, dynamic>> maps = await db.query(
+      'daily_stock',
+      where: 'date = ?',
+      whereArgs: [dateString],
+    );
+    if (maps.isNotEmpty) {
+      return DailyStock.fromDbMap(maps.first);
+    }
+    return null;
+  }
+
   Future<List<DailyStock>> getAllLocalStocks() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('daily_stock', orderBy: 'date DESC');
     return List.generate(maps.length, (i) => DailyStock.fromDbMap(maps[i]));
   }
 
-  Future<int> deleteDailyStock(String date) async {
+  Future<int> deleteDailyStock(String dateId) async {
     final db = await database;
-    return await db.delete('daily_stock', where: 'date = ?', whereArgs: [date]);
+    return await db.delete('daily_stock', where: 'date = ?', whereArgs: [dateId]);
   }
 
   Future<int> deleteAllDailyStocks() async {
@@ -334,8 +298,7 @@ class DatabaseHelper {
   // --- Operasi untuk Order ---
   Future<int> insertOrder(Order order) async {
     final db = await database;
-    return await db.insert('orders', order.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    return await db.insert('orders', order.toMap());
   }
 
   Future<List<Order>> getTodaysOrders() async {
@@ -352,16 +315,12 @@ class DatabaseHelper {
     });
   }
 
-  Future<void> deleteTodaysOrders() async {
+  Future<int> updateOrderStatus(int id, String status, {bool setDeliveredTime = false}) async {
     final db = await database;
-    String dateString = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    await db.delete('orders', where: 'date(created_at) = ?', whereArgs: [dateString]);
-  }
-
-  Future<int> updateOrderStatus(int id, String status,
-      {bool setDeliveredTime = false}) async {
-    final db = await database;
-    Map<String, dynamic> row = {'status': status};
+    Map<String, dynamic> row = {
+      'status': status,
+      'is_synced': 0,
+    };
     if (setDeliveredTime) {
       row['delivered_at'] = DateTime.now().toIso8601String();
     }
@@ -371,6 +330,22 @@ class DatabaseHelper {
   Future<int> deleteOrder(int id) async {
     final db = await database;
     return await db.delete('orders', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<Order>> getUnsyncedOrders() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('orders', where: 'is_synced = ?', whereArgs: [0]);
+    return List.generate(maps.length, (i) => Order.fromMap(maps[i]));
+  }
+
+  Future<int> markOrderAsSynced(int id, String firestoreId) async {
+    final db = await database;
+    return await db.update(
+      'orders',
+      {'is_synced': 1, 'firestore_id': firestoreId},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // --- Operasi untuk Customer ---

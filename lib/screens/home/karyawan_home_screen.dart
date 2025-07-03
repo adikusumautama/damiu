@@ -32,10 +32,8 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
   int _selectedIndex = 0;
   UserModel? _currentUserModel;
   final AuthService _authService = AuthService();
-  bool _isDailySyncing = false;
   final SyncService _syncService = SyncService();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  bool _isOffline = false;
 
   late List<Widget> _widgetOptions;
 
@@ -49,7 +47,7 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
   void initState() {
     super.initState();
     _widgetOptions = <Widget>[
-      const KaryawanBerandaContent(),
+      const KaryawanBerandaContent(), // Tidak perlu pass syncService lagi
       const CustomerBookScreen(),
       const KaryawanProfileScreen(),
     ];
@@ -67,9 +65,8 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      print("[KaryawanHomeScreen] App Resumed");
+      _performFullSync();
     }
   }
 
@@ -86,59 +83,33 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
   }
 
   Future<void> _initializeConnectivity() async {
-    final initialConnection = await Connectivity().checkConnectivity();
-    if (initialConnection.contains(ConnectivityResult.none)) {
-      setState(() {
-        _isOffline = true;
-      });
-    }
+    final result = await Connectivity().checkConnectivity();
+    _updateConnectionStatus(result);
     _connectivitySubscription =
         Connectivity().onConnectivityChanged.listen(_updateConnectionStatus);
   }
 
   void _updateConnectionStatus(List<ConnectivityResult> result) {
     final hasConnection = !result.contains(ConnectivityResult.none);
-    if (!hasConnection && !_isOffline) {
-      setState(() => _isOffline = true);
-      if (mounted) {
+    if (hasConnection) {
+      _performFullSync();
+    } else {
+       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-                'Anda saat ini sedang offline. Data akan disimpan di perangkat.'),
+                'Anda sedang offline.'),
             backgroundColor: Colors.orange,
-            duration: Duration(seconds: 5),
+            duration: Duration(seconds: 4),
           ),
         );
       }
-    } else if (hasConnection && _isOffline) {
-      setState(() => _isOffline = false);
-      _performFullSync();
     }
   }
 
   Future<void> _performFullSync() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult.contains(ConnectivityResult.none)) {
-      print("Sync skipped: No internet connection.");
-      return;
-    }
-    setState(() {
-      _isDailySyncing = true;
-    });
-    await _syncService.syncAllUnsummarizedDeliveryLogs();
-    await _syncService.syncCustomers();
-    if (mounted) {
-      setState(() {
-        _isDailySyncing = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Anda sudah online. Data telah disinkronkan.'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 4),
-        ),
-      );
-    }
+    // ... (Implementasi sinkronisasi yang benar ada di sync_service.dart)
+    await _syncService.syncAllData();
   }
 
   void _onItemTapped(int index) {
@@ -255,8 +226,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _today =
-        DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    _today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
     _initializeStreams();
   }
   
@@ -306,8 +276,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
               key: formKey,
               child: ListBody(
                 children: <Widget>[
-                  const Text(
-                      'Masukkan jumlah galon isi yang tersedia di awal hari kerja.'),
+                  const Text('Masukkan jumlah galon isi yang tersedia di awal hari kerja.'),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: filledStockController,
@@ -322,8 +291,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                       if (value == null || value.isEmpty) {
                         return 'Stok awal tidak boleh kosong';
                       }
-                      if (int.tryParse(value) == null ||
-                          int.parse(value) < 0) {
+                      if (int.tryParse(value) == null || int.parse(value) < 0) {
                         return 'Masukkan angka yang valid';
                       }
                       return null;
@@ -338,8 +306,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
               child: const Text('Simpan'),
               onPressed: () async {
                 if (formKey.currentState!.validate()) {
-                  final int filledStock =
-                      int.parse(filledStockController.text);
+                  final int filledStock = int.parse(filledStockController.text);
                   final String? uid = _authService.getCurrentUser()?.uid;
 
                   if (uid != null) {
@@ -398,29 +365,20 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Selesaikan Pengantaran'),
-        content: Text(
-            'Yakin pesanan untuk ${order.customerName} sudah selesai diantar?'),
+        content: Text('Yakin pesanan untuk ${order.customerName} sudah selesai diantar?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Ya, Selesai'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Ya, Selesai')),
         ],
       ),
     );
 
     if (confirm == true && order.firestoreId != null) {
-      // 1. Ubah status pesanan menjadi 'delivered'
       final statusError = await _firestoreService.updateOrderStatus(
           order.firestoreId!, OrderStatus.delivered,
           setDeliveredTime: true);
 
       if (statusError == null) {
-        // 2. Jika berhasil, kurangi stok saat ini DAN catat penjualan
         final stockError = await _firestoreService.adjustCurrentStock(-order.gallonQuantity);
         final saleError = await _firestoreService.recordSale(order.gallonQuantity, 1);
         
@@ -444,18 +402,10 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Batalkan Pesanan'),
-        content: Text(
-            'Yakin ingin membatalkan dan menghapus pesanan untuk ${order.customerName}?'),
+        content: Text('Yakin ingin membatalkan dan menghapus pesanan untuk ${order.customerName}?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Tidak'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Ya, Batalkan'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Tidak')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), style: FilledButton.styleFrom(backgroundColor: Colors.red), child: const Text('Ya, Batalkan')),
         ],
       ),
     );
@@ -570,8 +520,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
           );
   }
 
-  Widget _buildOrderListView(List<Order> orders,
-      {required String emptyMessage}) {
+  Widget _buildOrderListView(List<Order> orders, {required String emptyMessage}) {
     if (orders.isEmpty) {
       return RefreshIndicator(
         onRefresh: () async => _initializeStreams(),
@@ -582,18 +531,13 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.all(32.0),
-                child: Text(
-                  emptyMessage,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.grey),
-                ),
+                child: Text(emptyMessage, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
               ),
             ),
           ),
         ),
       );
     }
-
     return RefreshIndicator(
       onRefresh: () async => _initializeStreams(),
       child: ListView.builder(
@@ -634,8 +578,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                 Expanded(
                   child: Text(
                     order.customerName,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -645,18 +588,15 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                     style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                   backgroundColor: getStatusColor(order.status),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ],
             ),
             const Divider(),
-            _buildDetailRow(
-                Icons.local_drink_outlined, '${order.gallonQuantity} Galon'),
+            _buildDetailRow(Icons.local_drink_outlined, '${order.gallonQuantity} Galon'),
             if (order.otherItems != null && order.otherItems!.isNotEmpty)
-              _buildDetailRow(
-                  Icons.add_shopping_cart_outlined, order.otherItems!),
+              _buildDetailRow(Icons.add_shopping_cart_outlined, order.otherItems!),
             if (order.address != null && order.address!.isNotEmpty)
               _buildDetailRow(Icons.location_on_outlined, order.address!),
             if (order.phoneNumber != null && order.phoneNumber!.isNotEmpty)
@@ -671,8 +611,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
 
   Widget _buildStockInfoCard(
       DailyStock? stock, int totalOut, int totalIn, int deliveryCount) {
-    
-    if (stock == null && !_isDialogShown && !_isLoading) {
+    if (stock == null && !_isDialogShown) {
       _isDialogShown = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showSetInitialStockDialog(0);
@@ -707,10 +646,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Pergerakan Stok Hari Ini',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
+                Text('Pergerakan Stok Hari Ini', style: Theme.of(context).textTheme.titleLarge),
                 IconButton(
                   icon: const Icon(Icons.edit_outlined),
                   onPressed: () => _showSetInitialStockDialog(initialStock),
@@ -723,23 +659,17 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
             _buildInfoRow('Jumlah Pengantaran', '$deliveryCount kali'),
             const Divider(thickness: 0.5, height: 20),
             _buildInfoRow('Stok Awal (Hari Ini)', '$initialStock Galon'),
-            _buildInfoRow('Keluar (Dianter)', '-$totalOut Galon',
-                valueColor: Colors.red.shade700),
-            _buildInfoRow('Kembali (Diterima)', '+$totalIn Galon',
-                valueColor: Colors.blue.shade700),
+            _buildInfoRow('Keluar (Terjual)', '-$totalOut Galon', valueColor: Colors.red.shade700),
+            _buildInfoRow('Kembali (Diterima)', '+$totalIn Galon', valueColor: Colors.blue.shade700),
             const Divider(thickness: 0.5, height: 20),
-            _buildInfoRow('Total Persediaan Saat Ini', '$currentStock Galon',
-                isBold: true, valueColor: stockColor),
+            _buildInfoRow('Total Persediaan Saat Ini', '$currentStock Galon', isBold: true, valueColor: stockColor),
             if (currentStock > 0 && currentStock <= 5)
               Padding(
                 padding: const EdgeInsets.only(top: 12.0),
                 child: Center(
                   child: Text(
                     'Stok galon sangat menipis!',
-                    style: TextStyle(
-                        color: Colors.orange.shade900,
-                        fontWeight: FontWeight.bold,
-                        fontStyle: FontStyle.italic),
+                    style: TextStyle(color: Colors.orange.shade900, fontWeight: FontWeight.bold, fontStyle: FontStyle.italic),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -751,9 +681,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                   child: Text(
                     'Ada +$stockDifference galon lebih dari stok awal, total persediaan sekarang adalah $currentStock Galon.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                        color: Colors.green.shade900,
-                        fontStyle: FontStyle.italic),
+                    style: TextStyle(color: Colors.green.shade900, fontStyle: FontStyle.italic),
                   ),
                 ),
               ),
@@ -761,8 +689,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
             const Divider(thickness: 1, height: 24),
             Align(
               alignment: Alignment.centerRight,
-              child: Text(lastUpdatedText,
-                  style: Theme.of(context).textTheme.bodySmall),
+              child: Text(lastUpdatedText, style: Theme.of(context).textTheme.bodySmall),
             ),
           ],
         ),
@@ -770,8 +697,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     );
   }
 
-  Widget _buildInfoRow(String label, String value,
-      {bool isBold = false, Color? valueColor}) {
+  Widget _buildInfoRow(String label, String value, {bool isBold = false, Color? valueColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
@@ -807,8 +733,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
               icon: const Icon(Icons.cancel_outlined, size: 18),
               label: const Text('Batalkan'),
               onPressed: () => _cancelOrder(order),
-              style:
-                  TextButton.styleFrom(foregroundColor: Colors.red.shade700),
+              style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
             ),
           ],
         );
@@ -820,8 +745,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
               icon: const Icon(Icons.check_circle_outline, size: 18),
               label: const Text('Selesaikan'),
               onPressed: () => _completeDelivery(order),
-              style: FilledButton.styleFrom(
-                  backgroundColor: Colors.green.shade700),
+              style: FilledButton.styleFrom(backgroundColor: Colors.green.shade700),
             ),
           ],
         );
@@ -831,11 +755,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
           children: [
             const Icon(Icons.check_circle, color: Colors.green, size: 18),
             const SizedBox(width: 4),
-            Text(
-              'Terkirim',
-              style: TextStyle(
-                  color: Colors.green.shade800, fontWeight: FontWeight.bold),
-            ),
+            Text('Terkirim', style: TextStyle(color: Colors.green.shade800, fontWeight: FontWeight.bold)),
           ],
         );
       default:
@@ -864,10 +784,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
           icon: const Icon(Icons.note_add_outlined),
           label: const Text('Catat Pesanan Masuk'),
           onPressed: () {
-            Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const OrderInputScreen()))
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const OrderInputScreen()))
                 .then((saved) {
               if (saved == true) {
                 // Tidak perlu refresh manual, stream akan update otomatis
@@ -886,10 +803,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
           icon: const Icon(Icons.inventory_2_outlined),
           label: const Text('Input Galon Kosong Kembali'),
           onPressed: () {
-            Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const EmptyGallonInputScreen()))
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const EmptyGallonInputScreen()))
                 .then((saved) {
               if (saved == true) {
                 // Stream akan otomatis memperbarui tampilan
