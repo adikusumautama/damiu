@@ -11,22 +11,125 @@ import 'package:intl/intl.dart';
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  Future<String?> addDailySale(DailySale sale) async {
+  // --- Operasi untuk Pesanan (Order) ---
+
+  Stream<List<Order>> getTodaysOrdersStream() {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    return _db
+        .collection('orders')
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('createdAt', isLessThan: Timestamp.fromDate(endOfDay))
+        .orderBy('createdAt', descending: false)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        return Order.fromFirestore(doc.data(), doc.id);
+      }).toList();
+    });
+  }
+
+  Future<String?> addOrder(Order order) async {
     try {
-      await _db.collection('daily_sales').add({
-        'date': Timestamp.fromDate(sale.date),
-        'day_of_week': sale.dayOfWeek,
-        'delivery_count': sale.deliveryCount,
-        'quantity': sale.quantity,
-        'employee_uid': sale.employeeUid,
-        'synced_at': Timestamp.now(),
-      });
+      await _db.collection('orders').add(order.toMapForFirestore());
       return null;
     } catch (e) {
-      print('Error adding daily sale to Firestore: $e');
+      print('Error adding order to Firestore: $e');
       return e.toString();
     }
   }
+
+  Future<String?> deleteOrder(String firestoreId) async {
+    try {
+      await _db.collection('orders').doc(firestoreId).delete();
+      return null;
+    } catch (e) {
+      print('Error deleting order from Firestore: $e');
+      return e.toString();
+    }
+  }
+
+  Future<String?> updateOrderStatus(String firestoreId, String status, {bool setDeliveredTime = false}) async {
+    try {
+      Map<String, dynamic> dataToUpdate = {'status': status};
+      if (setDeliveredTime) {
+        dataToUpdate['deliveredAt'] = Timestamp.now();
+      }
+      await _db.collection('orders').doc(firestoreId).update(dataToUpdate);
+      return null;
+    } catch (e) {
+      print('Error updating order status in Firestore: $e');
+      return e.toString();
+    }
+  }
+
+  // --- Operasi untuk Pelanggan (Customer) ---
+
+  Future<String?> upsertCustomer(Customer customer) async {
+    if (customer.name.trim().isEmpty) {
+      print('Error: Mencoba sinkronisasi pelanggan dengan nama kosong. Dilewati.');
+      return null;
+    }
+    try {
+      await _db
+          .collection('customers')
+          .doc(customer.name)
+          .set(customer.toFirestore(), SetOptions(merge: true));
+      return null;
+    } catch (e) {
+      print('Error upserting customer to Firestore: $e');
+      return e.toString();
+    }
+  }
+
+  Stream<List<Customer>> getCustomersStream() {
+    return _db.collection('customers').snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) {
+        return Customer.fromFirestore(doc.data(), doc.id);
+      }).toList();
+    });
+  }
+  
+  // --- Operasi untuk Stok (Stock) ---
+
+  Stream<DailyStock?> getDailyStockStream(DateTime date) {
+    String docId = DateFormat('yyyy-MM-dd').format(date);
+    return _db
+        .collection('daily_stock_levels')
+        .doc(docId)
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.exists) {
+        return DailyStock.fromFirestore(snapshot);
+      }
+      return null;
+    });
+  }
+
+  Future<String?> setInitialStock({
+    required DateTime date,
+    required int filledStock,
+    required int emptyStock,
+    required String updatedByUid,
+  }) async {
+    try {
+      String docId = DateFormat('yyyy-MM-dd').format(date);
+      await _db.collection('daily_stock_levels').doc(docId).set({
+        'initial_stock': filledStock,
+        'initial_empty_stock': emptyStock,
+        'last_updated': Timestamp.now(),
+        'updated_by_uid': updatedByUid,
+      }, SetOptions(merge: true));
+      return null;
+    } catch (e) {
+      print('Error setting initial stock: $e');
+      return e.toString();
+    }
+  }
+
+  // --- Operasi untuk Penjualan Harian (Daily Sale) ---
 
   Stream<List<DailySale>> getDailySalesStream() {
     return _db
@@ -50,7 +153,7 @@ class FirestoreService {
       }).toList();
     });
   }
-
+  
   Future<List<DailySale>> getDailySalesOnce() async {
     try {
       final snapshot = await _db
@@ -76,6 +179,21 @@ class FirestoreService {
       return [];
     }
   }
+  
+  Future<String?> upsertDailySale(DailySale sale) async {
+    try {
+      String docId = DateFormat('yyyy-MM-dd').format(sale.date);
+      await _db.collection('daily_sales').doc(docId).set({
+        'date': Timestamp.fromDate(sale.date),
+        'day_of_week': sale.dayOfWeek,
+        'quantity': sale.quantity,
+      }, SetOptions(merge: true));
+      return null;
+    } catch (e) {
+      print('Error upserting daily sale to Firestore: $e');
+      return e.toString();
+    }
+  }
 
   Future<String?> deleteDailySale(String firestoreId) async {
     try {
@@ -91,11 +209,9 @@ class FirestoreService {
     try {
       final snapshot = await _db.collection('daily_sales').get();
       final batch = _db.batch();
-
       for (var doc in snapshot.docs) {
         batch.delete(doc.reference);
       }
-
       await batch.commit();
       return null;
     } catch (e) {
@@ -104,30 +220,7 @@ class FirestoreService {
     }
   }
 
-  Future<int> getSyncedSalesCount() async {
-    try {
-      final snapshot = await _db.collection('daily_sales').count().get();
-      return snapshot.count ?? 0;
-    } catch (e) {
-      print('Error getting synced sales count from Firestore: $e');
-      return 0;
-    }
-  }
-
-  Future<String?> upsertDailySale(DailySale sale) async {
-    try {
-      String docId = DateFormat('yyyy-MM-dd').format(sale.date);
-      await _db.collection('daily_sales').doc(docId).set({
-        'date': Timestamp.fromDate(sale.date),
-        'day_of_week': sale.dayOfWeek,
-        'quantity': sale.quantity,
-      }, SetOptions(merge: true));
-      return null;
-    } catch (e) {
-      print('Error upserting daily sale to Firestore: $e');
-      return e.toString();
-    }
-  }
+  // --- Operasi untuk Metadata Sinkronisasi (Sync Metadata) ---
 
   Future<String?> upsertDailySyncMetadata({
     required DateTime date,
@@ -194,141 +287,6 @@ class FirestoreService {
       return null;
     } catch (e) {
       print('Error deleting all daily sync metadata: $e');
-      return e.toString();
-    }
-  }
-
-  Stream<DailyStock?> getDailyStockStream(DateTime date) {
-    String docId = DateFormat('yyyy-MM-dd').format(date);
-    return _db
-        .collection('daily_stock_levels')
-        .doc(docId)
-        .snapshots()
-        .map((snapshot) {
-      if (snapshot.exists) {
-        return DailyStock.fromFirestore(snapshot);
-      }
-      return null;
-    });
-  }
-
-  Stream<List<DailySale>> getSalesForDateStream(DateTime date) {
-    final DateTime startOfDay = DateTime(date.year, date.month, date.day);
-    final DateTime endOfDay = startOfDay.add(const Duration(days: 1));
-
-    return _db
-        .collection('daily_sales')
-        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-        .where('date', isLessThan: Timestamp.fromDate(endOfDay))
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
-        return DailySale(
-          date: (data['date'] as Timestamp).toDate(),
-          dayOfWeek: data['day_of_week'] ??
-              (data['date'] as Timestamp).toDate().weekday,
-          deliveryCount: (data['delivery_count'] as num?)?.toInt() ?? 0,
-          quantity: data['quantity'] as int,
-          employeeUid: data['employee_uid'] as String?,
-          isSynced: true,
-          firestoreId: doc.id,
-        );
-      }).toList();
-    });
-  }
-
-  Future<List<DailySale>> getSyncedSalesForDateOnce(DateTime date) async {
-    try {
-      final DateTime startOfDay = DateTime(date.year, date.month, date.day);
-      final DateTime endOfDay = startOfDay.add(const Duration(days: 1));
-
-      final snapshot = await _db
-          .collection('daily_sales')
-          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-          .where('date', isLessThan: Timestamp.fromDate(endOfDay))
-          .get();
-
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
-        return DailySale.fromMap(data..['is_synced'] = 1..['id'] = null);
-      }).toList();
-    } catch (e) {
-      print('Error getting synced sales for date: $e');
-      return [];
-    }
-  }
-
-  Future<String?> setInitialStock({
-    required DateTime date,
-    required int filledStock,
-    required int emptyStock,
-    required String updatedByUid,
-  }) async {
-    try {
-      String docId = DateFormat('yyyy-MM-dd').format(date);
-      await _db.collection('daily_stock_levels').doc(docId).set({
-        'initial_stock': filledStock,
-        'initial_empty_stock': emptyStock,
-        'last_updated': Timestamp.now(),
-        'updated_by_uid': updatedByUid,
-      }, SetOptions(merge: true));
-      return null;
-    } catch (e) {
-      print('Error setting initial stock: $e');
-      return e.toString();
-    }
-  }
-
-  Future<String?> upsertCustomer(Customer customer) async {
-    if (customer.name.trim().isEmpty) {
-      print('Error: Mencoba sinkronisasi pelanggan dengan nama kosong. Dilewati.');
-      return null;
-    }
-    try {
-      await _db
-          .collection('customers')
-          .doc(customer.name)
-          .set(customer.toFirestore(), SetOptions(merge: true));
-      return null;
-    } catch (e) {
-      print('Error upserting customer to Firestore: $e');
-      return e.toString();
-    }
-  }
-
-  Stream<List<Customer>> getCustomersStream() {
-    return _db.collection('customers').snapshots().map((snapshot) {
-      return snapshot.docs.map((doc) {
-        return Customer.fromFirestore(doc.data(), doc.id);
-      }).toList();
-    });
-  }
-  
-  Stream<List<Order>> getTodaysOrdersStream() {
-    final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
-
-    return _db
-        .collection('orders')
-        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-        .where('createdAt', isLessThan: Timestamp.fromDate(endOfDay))
-        .orderBy('createdAt', descending: false)
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        return Order.fromFirestore(doc.data(), doc.id);
-      }).toList();
-    });
-  }
-
-  Future<String?> addOrder(Order order) async {
-    try {
-      await _db.collection('orders').add(order.toMapForFirestore());
-      return null;
-    } catch (e) {
-      print('Error adding order to Firestore: $e');
       return e.toString();
     }
   }

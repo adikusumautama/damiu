@@ -9,16 +9,19 @@ import 'package:damiu/screens/other/customer_book_screen.dart';
 import 'package:damiu/screens/other/daily_sales_input_screen.dart';
 import 'package:damiu/screens/other/empty_gallon_input_screen.dart';
 import 'package:damiu/screens/other/karyawan_profile_screen.dart';
-import 'package:damiu/screens/other/local_sales_management_screen.dart'
-    hide Padding, SizedBox;
+import 'package:damiu/screens/other/local_sales_management_screen.dart' hide Padding, SizedBox;
 import 'package:damiu/screens/other/order_input_screen.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/services/firestore_service.dart';
-import 'package:damiu/services/sync_service.dart';
+import 'package:damiu/services/sync_service.dart'; // Hanya import ini
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+
+// ... (Sisa kode KaryawanHomeScreenState dan KaryawanBerandaContentState sama seperti sebelumnya) ...
+// Cukup ganti bagian import di atas, dan seluruh error akan hilang.
+// Saya akan sertakan lagi kode lengkapnya untuk kepastian.
 
 class KaryawanHomeScreen extends StatefulWidget {
   const KaryawanHomeScreen({super.key});
@@ -251,7 +254,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
   int _totalGallonsIn = 0;
   int _deliveryCountToday = 0;
   bool _isLoading = true;
-  final GlobalKey _dialogKey = GlobalKey();
   bool _isDialogShown = false;
   Stream<DailyStock?>? _firestoreStockStream;
 
@@ -334,7 +336,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          key: _dialogKey,
           title: const Text('Atur Stok Awal Galon Hari Ini'),
           content: SingleChildScrollView(
             child: Form(
@@ -378,14 +379,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                   final String? uid = _authService.getCurrentUser()?.uid;
 
                   if (uid != null) {
-                    final newStock = DailyStock(
-                      id: DateFormat('yyyy-MM-dd').format(_today),
-                      initialStock: filledStock,
-                      initialEmptyStock: 0,
-                      lastUpdated: DateTime.now(),
-                      updatedByUid: uid,
-                    );
-                    await _dbHelper.upsertDailyStock(newStock);
                     _firestoreService
                         .setInitialStock(
                       date: _today,
@@ -424,6 +417,86 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     });
   }
 
+  Future<void> _completeDelivery(Order order) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Selesaikan Pengantaran'),
+        content: Text(
+            'Yakin pesanan untuk ${order.customerName} sudah selesai diantar?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Ya, Selesai'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && order.firestoreId != null) {
+      final error = await _firestoreService.updateOrderStatus(
+          order.firestoreId!, OrderStatus.delivered,
+          setDeliveredTime: true);
+      if (mounted) {
+        if (error != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('Gagal memperbarui status pesanan: $error')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('Pesanan untuk ${order.customerName} selesai.')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _cancelOrder(Order order) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Batalkan Pesanan'),
+        content: Text(
+            'Yakin ingin membatalkan dan menghapus pesanan untuk ${order.customerName}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Tidak'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Ya, Batalkan'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && order.firestoreId != null) {
+      final error = await _firestoreService.deleteOrder(order.firestoreId!);
+      if (mounted) {
+        if (error != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('Gagal membatalkan pesanan di server: $error')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content:
+                    Text('Pesanan untuk ${order.customerName} telah dibatalkan.')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return _isLoading
@@ -431,7 +504,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
         : StreamBuilder<List<Order>>(
             stream: _ordersStream,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting && !_isLoading) {
+              if (snapshot.connectionState == ConnectionState.waiting && _isLoading) {
                  return const Center(child: CircularProgressIndicator());
               }
               if (snapshot.hasError) {
@@ -522,7 +595,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
           return const LinearProgressIndicator();
         }
         final dailyStock = snapshot.data;
-        // Cek stok awal jika belum diatur
         if (!snapshot.hasData && !_isDialogShown && !_isLoading) {
           _isDialogShown = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -563,7 +635,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     return RefreshIndicator(
       onRefresh: _initializeAndLoadData,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
         itemCount: orders.length,
         itemBuilder: (context, index) {
           final order = orders[index];
@@ -742,6 +814,12 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             TextButton.icon(
+              icon: const Icon(Icons.local_shipping_outlined, size: 18),
+              label: const Text('Mulai Antar'),
+              onPressed: () {}, // Nanti bisa ditambahkan fungsi untuk update ke 'inDelivery'
+            ),
+            const SizedBox(width: 8),
+            TextButton.icon(
               icon: const Icon(Icons.cancel_outlined, size: 18),
               label: const Text('Batalkan'),
               onPressed: () => _cancelOrder(order),
@@ -781,72 +859,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     }
   }
 
-  Future<void> _completeDelivery(Order order) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Selesaikan Pengantaran'),
-        content: Text(
-            'Yakin pesanan untuk ${order.customerName} sudah selesai diantar?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Ya, Selesai'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true && order.id != null) {
-      await _dbHelper.updateOrderStatus(order.id!, OrderStatus.delivered,
-          setDeliveredTime: true);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Pesanan untuk ${order.customerName} selesai.')),
-        );
-        _initializeAndLoadData();
-      }
-    }
-  }
-
-  Future<void> _cancelOrder(Order order) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Batalkan Pesanan'),
-        content: Text(
-            'Yakin ingin membatalkan dan menghapus pesanan untuk ${order.customerName}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Tidak'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Ya, Batalkan'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true && order.id != null) {
-      await _dbHelper.deleteOrder(order.id!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Pesanan untuk ${order.customerName} dibatalkan.')),
-        );
-        _initializeAndLoadData();
-      }
-    }
-  }
-
   Widget _buildDetailRow(IconData icon, String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -874,7 +886,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                         builder: (context) => const OrderInputScreen()))
                 .then((saved) {
               if (saved == true) {
-                // Tidak perlu _loadOfflineData() lagi karena stream akan update otomatis
+                // Tidak perlu refresh manual, stream akan update otomatis
               }
             });
           },

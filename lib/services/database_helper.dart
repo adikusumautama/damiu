@@ -35,7 +35,6 @@ class DatabaseHelper {
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    // Buat tabel 'daily_sales'
     await db.execute('''
       CREATE TABLE daily_sales(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,8 +46,6 @@ class DatabaseHelper {
         employee_uid TEXT
       )
     ''');
-
-    // Buat tabel 'delivery_log'
     await db.execute('''
       CREATE TABLE delivery_log(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,8 +57,6 @@ class DatabaseHelper {
         is_no_delivery_marker INTEGER DEFAULT 0
       )
     ''');
-
-    // Buat tabel 'daily_stock'
     await db.execute('''
       CREATE TABLE daily_stock(
         date TEXT PRIMARY KEY,
@@ -71,8 +66,6 @@ class DatabaseHelper {
         updated_by_uid TEXT
       )
     ''');
-
-    // Buat tabel 'orders'
     await db.execute('''
       CREATE TABLE orders(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,8 +81,6 @@ class DatabaseHelper {
         employee_uid TEXT NOT NULL
       )
     ''');
-
-    // Buat tabel 'customers'
     await db.execute('''
       CREATE TABLE customers(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,23 +108,10 @@ class DatabaseHelper {
       ''');
     }
     if (oldVersion < 3) {
-      var tableInfo = await db.rawQuery("PRAGMA table_info(daily_sales)");
-      bool columnExists =
-          tableInfo.any((column) => column['name'] == 'delivery_count');
-      if (!columnExists) {
-        await db.execute(
-            'ALTER TABLE daily_sales ADD COLUMN delivery_count INTEGER DEFAULT 0');
-      }
+      await db.execute('ALTER TABLE daily_sales ADD COLUMN delivery_count INTEGER DEFAULT 0');
     }
     if (oldVersion < 4) {
-      var deliveryLogTableInfo =
-          await db.rawQuery("PRAGMA table_info(delivery_log)");
-      bool columnExists = deliveryLogTableInfo
-          .any((column) => column['name'] == 'is_no_delivery_marker');
-      if (!columnExists) {
-        await db.execute(
-            'ALTER TABLE delivery_log ADD COLUMN is_no_delivery_marker INTEGER DEFAULT 0');
-      }
+      await db.execute('ALTER TABLE delivery_log ADD COLUMN is_no_delivery_marker INTEGER DEFAULT 0');
     }
     if (oldVersion < 5) {
       await db.execute('''
@@ -146,10 +124,8 @@ class DatabaseHelper {
       ''');
     }
     if (oldVersion < 6) {
-      await db.execute(
-          'ALTER TABLE delivery_log ADD COLUMN empty_gallons_returned INTEGER DEFAULT 0');
-      await db.execute(
-          'ALTER TABLE daily_stock ADD COLUMN initial_empty_stock INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE delivery_log ADD COLUMN empty_gallons_returned INTEGER DEFAULT 0');
+      await db.execute('ALTER TABLE daily_stock ADD COLUMN initial_empty_stock INTEGER NOT NULL DEFAULT 0');
     }
     if (oldVersion < 7) {
       await db.execute('''
@@ -179,8 +155,7 @@ class DatabaseHelper {
       ''');
     }
     if (oldVersion < 9) {
-      await db.execute(
-          'ALTER TABLE customers ADD COLUMN is_synced INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE customers ADD COLUMN is_synced INTEGER NOT NULL DEFAULT 0');
     }
     if (oldVersion < 10) {
       await db.execute('ALTER TABLE orders ADD COLUMN firestore_id TEXT');
