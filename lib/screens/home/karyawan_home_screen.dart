@@ -9,19 +9,18 @@ import 'package:damiu/screens/other/customer_book_screen.dart';
 import 'package:damiu/screens/other/daily_sales_input_screen.dart';
 import 'package:damiu/screens/other/empty_gallon_input_screen.dart';
 import 'package:damiu/screens/other/karyawan_profile_screen.dart';
-import 'package:damiu/screens/other/local_sales_management_screen.dart' hide Padding, SizedBox;
+import 'package:damiu/screens/other/local_sales_management_screen.dart'
+    hide Padding, SizedBox;
 import 'package:damiu/screens/other/order_input_screen.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/services/firestore_service.dart';
-import 'package:damiu/services/sync_service.dart'; // Hanya import ini
+// --- PERUBAHAN DI SINI ---
+import 'package:damiu/services/sync_service.dart';
+// --- AKHIR PERUBAHAN ---
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-
-// ... (Sisa kode KaryawanHomeScreenState dan KaryawanBerandaContentState sama seperti sebelumnya) ...
-// Cukup ganti bagian import di atas, dan seluruh error akan hilang.
-// Saya akan sertakan lagi kode lengkapnya untuk kepastian.
 
 class KaryawanHomeScreen extends StatefulWidget {
   const KaryawanHomeScreen({super.key});
