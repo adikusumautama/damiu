@@ -65,6 +65,40 @@ class FirestoreService {
     }
   }
 
+  // --- Operasi untuk Galon Kembali ---
+  
+  Future<String?> addReturnedGallonLog({required int quantity, required String employeeUid}) async {
+    try {
+      await _db.collection('returned_gallons_log').add({
+        'quantity': quantity,
+        'createdAt': Timestamp.now(),
+        'employeeUid': employeeUid,
+      });
+      return null;
+    } catch (e) {
+      print('Error adding returned gallon log: $e');
+      return e.toString();
+    }
+  }
+
+  Stream<int> getTodaysReturnedGallonsStream() {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    return _db
+        .collection('returned_gallons_log')
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('createdAt', isLessThan: Timestamp.fromDate(endOfDay))
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.docs.isEmpty) {
+        return 0;
+      }
+      return snapshot.docs.fold<int>(0, (sum, doc) => sum + (doc.data()['quantity'] as int));
+    });
+  }
+  
   // --- Operasi untuk Pelanggan (Customer) ---
 
   Future<String?> upsertCustomer(Customer customer) async {

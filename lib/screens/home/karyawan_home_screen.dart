@@ -21,6 +21,7 @@ import 'package:intl/intl.dart';
 
 class KaryawanHomeScreen extends StatefulWidget {
   const KaryawanHomeScreen({super.key});
+
   @override
   State<KaryawanHomeScreen> createState() => _KaryawanHomeScreenState();
 }
@@ -244,11 +245,11 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
 
   late DateTime _today;
   late Stream<List<Order>> _ordersStream;
-
-  int _totalGallonsIn = 0;
+  late Stream<int> _returnedGallonsStream;
+  late Stream<DailyStock?> _stockStream;
+  
   bool _isLoading = true;
   bool _isDialogShown = false;
-  Stream<DailyStock?>? _firestoreStockStream;
 
   @override
   void initState() {
@@ -256,7 +257,16 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     WidgetsBinding.instance.addObserver(this);
     _today =
         DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-    _initializeAndLoadData();
+    _initializeStreams();
+  }
+  
+  void _initializeStreams() {
+    setState(() {
+      _stockStream = _firestoreService.getDailyStockStream(_today);
+      _ordersStream = _firestoreService.getTodaysOrdersStream();
+      _returnedGallonsStream = _firestoreService.getTodaysReturnedGallonsStream();
+      _isLoading = false;
+    });
   }
 
   @override
@@ -268,8 +278,8 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
         print("Hari telah berganti. Memuat ulang data untuk hari ini...");
         setState(() {
           _today = currentDate;
+          _initializeStreams();
         });
-        _initializeAndLoadData();
       }
     }
   }
@@ -278,40 +288,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
-  }
-
-  Future<void> _initializeAndLoadData() async {
-    setState(() {
-      _firestoreStockStream = _firestoreService.getDailyStockStream(_today);
-      _ordersStream = _firestoreService.getTodaysOrdersStream();
-      _isLoading = true;
-    });
-    await _loadReturnedGallons();
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _loadReturnedGallons() async {
-    final localLogs = await _dbHelper.getAllDeliveryLogsForDate(_today);
-    final totalIn =
-        localLogs.fold<int>(0, (sum, log) => sum + log.emptyGallonsReturned);
-
-    if (mounted) {
-      setState(() {
-        _totalGallonsIn = totalIn;
-      });
-    }
-  }
-
-  Future<void> _syncLocalOrders(List<Order> firestoreOrders) async {
-    await _dbHelper.deleteTodaysOrders();
-    for (final order in firestoreOrders) {
-      await _dbHelper.insertOrder(order);
-    }
-    print("Sinkronisasi pesanan lokal selesai.");
   }
 
   Future<void> _showSetInitialStockDialog(int currentFilledStock) async {
@@ -503,130 +479,92 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
         ? const Center(child: CircularProgressIndicator())
         : StreamBuilder<List<Order>>(
             stream: _ordersStream,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting && _isLoading) {
-                 return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(
-                    child: Text("Error memuat pesanan: ${snapshot.error}"));
-              }
+            builder: (context, ordersSnapshot) {
+              return StreamBuilder<int>(
+                stream: _returnedGallonsStream,
+                builder: (context, returnedGallonsSnapshot) {
+                  return StreamBuilder<DailyStock?>(
+                    stream: _stockStream,
+                    builder: (context, stockSnapshot) {
+                      if (ordersSnapshot.connectionState == ConnectionState.waiting ||
+                          returnedGallonsSnapshot.connectionState == ConnectionState.waiting ||
+                          stockSnapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (ordersSnapshot.hasError || returnedGallonsSnapshot.hasError || stockSnapshot.hasError) {
+                        return Center(child: Text("Error memuat data: ${ordersSnapshot.error ?? returnedGallonsSnapshot.error ?? stockSnapshot.error}"));
+                      }
 
-              final allTodaysOrders = snapshot.data ?? [];
+                      final allTodaysOrders = ordersSnapshot.data ?? [];
+                      final totalGallonsIn = returnedGallonsSnapshot.data ?? 0;
+                      final dailyStock = stockSnapshot.data;
 
-              final pendingOrders = allTodaysOrders
-                  .where((o) => o.status == OrderStatus.pending)
-                  .toList();
-              final inDeliveryOrders = allTodaysOrders
-                  .where((o) => o.status == OrderStatus.inDelivery)
-                  .toList();
-              final completedOrders = allTodaysOrders
-                  .where((o) => o.status == OrderStatus.delivered)
-                  .toList();
+                      final pendingOrders = allTodaysOrders.where((o) => o.status == OrderStatus.pending).toList();
+                      final inDeliveryOrders = allTodaysOrders.where((o) => o.status == OrderStatus.inDelivery).toList();
+                      final completedOrders = allTodaysOrders.where((o) => o.status == OrderStatus.delivered).toList();
 
-              // --- PERHITUNGAN STATISTIK BARU ---
-              final totalGallonsOut = completedOrders.fold<int>(
-                  0, (sum, order) => sum + order.gallonQuantity);
-              final deliveryCount = completedOrders.length;
-              // --- AKHIR PERHITUNGAN ---
+                      final totalGallonsOut = completedOrders.fold<int>(0, (sum, order) => sum + order.gallonQuantity);
+                      final deliveryCount = completedOrders.length;
 
-              return FutureBuilder(
-                  future: _syncLocalOrders(allTodaysOrders),
-                  builder: (context, syncSnapshot) {
-                    return DefaultTabController(
-                      length: 3,
-                      child: NestedScrollView(
-                        headerSliverBuilder: (context, innerBoxIsScrolled) {
-                          return [
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    _buildStockInfoCardStream(
-                                        totalGallonsOut, deliveryCount),
-                                    const SizedBox(height: 16),
-                                    _buildActionButtons(),
-                                    const Divider(height: 32, thickness: 1),
-                                    const Text(
-                                      'Daftar Pesanan Hari Ini',
-                                      style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
+                      return DefaultTabController(
+                        length: 3,
+                        child: NestedScrollView(
+                          headerSliverBuilder: (context, innerBoxIsScrolled) {
+                            return [
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      _buildStockInfoCard(dailyStock, totalGallonsOut, totalGallonsIn, deliveryCount),
+                                      const SizedBox(height: 16),
+                                      _buildActionButtons(),
+                                      const Divider(height: 32, thickness: 1),
+                                      const Text(
+                                        'Daftar Pesanan Hari Ini',
+                                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                            SliverPersistentHeader(
-                              delegate: _SliverAppBarDelegate(
-                                TabBar(
-                                  tabs: [
-                                    Tab(
-                                        text:
-                                            'Belum Diantar (${pendingOrders.length})'),
-                                    Tab(
-                                        text:
-                                            'Diantar (${inDeliveryOrders.length})'),
-                                    Tab(
-                                        text:
-                                            'Selesai (${completedOrders.length})'),
-                                  ],
+                              SliverPersistentHeader(
+                                delegate: _SliverAppBarDelegate(
+                                  TabBar(
+                                    tabs: [
+                                      Tab(text: 'Belum Diantar (${pendingOrders.length})'),
+                                      Tab(text: 'Diantar (${inDeliveryOrders.length})'),
+                                      Tab(text: 'Selesai (${completedOrders.length})'),
+                                    ],
+                                  ),
                                 ),
+                                pinned: true,
                               ),
-                              pinned: true,
-                            ),
-                          ];
-                        },
-                        body: TabBarView(
-                          children: [
-                            _buildOrderListView(pendingOrders,
-                                emptyMessage:
-                                    'Tidak ada pesanan yang perlu diantar saat ini.'),
-                            _buildOrderListView(inDeliveryOrders,
-                                emptyMessage:
-                                    'Tidak ada pesanan yang sedang diantar.'),
-                            _buildOrderListView(completedOrders,
-                                emptyMessage:
-                                    'Belum ada pesanan yang selesai hari ini.'),
-                          ],
+                            ];
+                          },
+                          body: TabBarView(
+                            children: [
+                              _buildOrderListView(pendingOrders, emptyMessage: 'Tidak ada pesanan yang perlu diantar.'),
+                              _buildOrderListView(inDeliveryOrders, emptyMessage: 'Tidak ada pesanan yang sedang diantar.'),
+                              _buildOrderListView(completedOrders, emptyMessage: 'Belum ada pesanan yang selesai hari ini.'),
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  });
+                      );
+                    },
+                  );
+                },
+              );
             },
           );
-  }
-
-  Widget _buildStockInfoCardStream(int totalGallonsOut, int deliveryCount) {
-    return StreamBuilder<DailyStock?>(
-      stream: _firestoreStockStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting && !_isLoading) {
-          return const LinearProgressIndicator();
-        }
-        final dailyStock = snapshot.data;
-        if (!snapshot.hasData && !_isDialogShown && !_isLoading) {
-          _isDialogShown = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _showSetInitialStockDialog(0);
-          });
-        }
-
-        return _buildStockInfoCard(
-            dailyStock, totalGallonsOut, _totalGallonsIn, deliveryCount);
-      },
-    );
   }
 
   Widget _buildOrderListView(List<Order> orders,
       {required String emptyMessage}) {
     if (orders.isEmpty) {
       return RefreshIndicator(
-        onRefresh: _initializeAndLoadData,
+        onRefresh: () async => _initializeStreams(),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: SizedBox(
@@ -647,7 +585,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     }
 
     return RefreshIndicator(
-      onRefresh: _initializeAndLoadData,
+      onRefresh: () async => _initializeStreams(),
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
         itemCount: orders.length,
@@ -723,6 +661,14 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
 
   Widget _buildStockInfoCard(
       DailyStock? stock, int totalOut, int totalIn, int deliveryCount) {
+    
+    if (stock == null && !_isDialogShown) {
+      _isDialogShown = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showSetInitialStockDialog(0);
+      });
+    }
+
     final initialStock = stock?.initialStock ?? 0;
     final currentStock = initialStock - totalOut + totalIn;
     final stockDifference = currentStock - initialStock;
@@ -936,7 +882,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                         builder: (context) => const EmptyGallonInputScreen()))
                 .then((saved) {
               if (saved == true) {
-                _loadReturnedGallons();
+                // Tidak perlu refresh manual, stream akan update otomatis
               }
             });
           },
@@ -981,6 +927,6 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
-    return false;
+    return true;
   }
 }

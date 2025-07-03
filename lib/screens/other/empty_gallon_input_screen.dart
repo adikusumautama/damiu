@@ -1,10 +1,9 @@
 // lib/screens/other/empty_gallon_input_screen.dart
 
+import 'package:damiu/services/auth_service.dart';
+import 'package:damiu/services/firestore_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:damiu/models/delivery_log_model.dart';
-import 'package:damiu/services/database_helper.dart';
-import 'package:damiu/services/auth_service.dart';
 
 class EmptyGallonInputScreen extends StatefulWidget {
   const EmptyGallonInputScreen({super.key});
@@ -15,72 +14,52 @@ class EmptyGallonInputScreen extends StatefulWidget {
 
 class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _emptyGallonsController = TextEditingController();
+  final _gallonQuantityController = TextEditingController();
   bool _isLoading = false;
+  final FirestoreService _firestoreService = FirestoreService();
+  final AuthService _authService = AuthService();
 
   @override
   void dispose() {
-    _emptyGallonsController.dispose();
+    _gallonQuantityController.dispose();
     super.dispose();
   }
 
-  Future<void> _saveLog() async {
+  Future<void> _saveReturnedGallons() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
-      final int emptyGallons = int.parse(_emptyGallonsController.text);
-      final String? employeeUid = AuthService().getCurrentUser()?.uid;
-
+      final String? employeeUid = _authService.getCurrentUser()?.uid;
       if (employeeUid == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error: Pengguna tidak login.')),
-          );
-        }
-        setState(() { _isLoading = false; });
+        // ... (handle error)
         return;
       }
 
-      // Membuat log transaksi khusus untuk galon kosong yang kembali
-      final DeliveryLogItem newLog = DeliveryLogItem(
-        timestamp: DateTime.now(),
-        gallons: 0, // Tidak ada galon isi yang diantar pada transaksi ini
-        emptyGallonsReturned: emptyGallons,
+      final int quantity = int.parse(_gallonQuantityController.text);
+
+      final error = await _firestoreService.addReturnedGallonLog(
+        quantity: quantity,
         employeeUid: employeeUid,
-        isSummarized: false,
       );
 
-      final dbHelper = DatabaseHelper();
-      try {
-        int id = await dbHelper.insertDeliveryLog(newLog);
-        if (mounted) {
-          if (id > 0) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Data galon kosong berhasil disimpan!')),
-            );
-            _emptyGallonsController.clear();
-            Navigator.pop(context, true); // Kembali dengan status sukses
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Gagal menyimpan data.')),
-            );
-          }
-        }
-      } catch (e) {
-        if (mounted) {
+      if (mounted) {
+        if (error == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Gagal menyimpan data: ${e.toString()}')),
+            const SnackBar(content: Text('Berhasil mencatat galon kembali!')),
+          );
+          Navigator.pop(context, true);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal menyimpan log: $error')),
           );
         }
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
       }
+
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -96,18 +75,18 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
+            children: [
               Text(
-                'Catat jumlah galon kosong yang Anda terima kembali dari pelanggan.',
-                style: Theme.of(context).textTheme.bodyMedium,
+                'Catat jumlah galon kosong yang diterima/kembali.',
+                style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
               TextFormField(
-                controller: _emptyGallonsController,
+                controller: _gallonQuantityController,
                 autofocus: true,
                 decoration: const InputDecoration(
-                  labelText: 'Jumlah Galon Kosong Diterima',
+                  labelText: 'Jumlah Galon Kosong',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.inventory_2_outlined),
                 ),
@@ -115,10 +94,10 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Masukkan jumlah galon kosong';
+                    return 'Jumlah galon tidak boleh kosong';
                   }
                   if (int.tryParse(value) == null || int.parse(value) <= 0) {
-                    return 'Masukkan angka positif yang valid';
+                    return 'Masukkan jumlah yang valid';
                   }
                   return null;
                 },
@@ -126,12 +105,14 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
               const SizedBox(height: 24),
               _isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : ElevatedButton(
-                      onPressed: _saveLog,
+                  : ElevatedButton.icon(
+                      icon: const Icon(Icons.save_outlined),
+                      label: const Text('Simpan Log'),
+                      onPressed: _saveReturnedGallons,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
+                        textStyle: const TextStyle(fontSize: 16),
                       ),
-                      child: const Text('Simpan', style: TextStyle(fontSize: 16)),
                     ),
             ],
           ),
