@@ -9,7 +9,8 @@ import 'package:damiu/models/user_model.dart';
 import 'package:damiu/screens/other/customer_book_screen.dart';
 import 'package:damiu/screens/other/empty_gallon_input_screen.dart';
 import 'package:damiu/screens/other/karyawan_profile_screen.dart';
-import 'package:damiu/screens/other/local_sales_management_screen.dart' hide Padding, SizedBox;
+import 'package:damiu/screens/other/local_sales_management_screen.dart'
+    hide Padding, SizedBox;
 import 'package:damiu/screens/other/order_input_screen.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';

@@ -206,7 +206,13 @@ class FirestoreService {
       if (snapshot.exists) {
         return DailySale.fromMap(snapshot.data() as Map<String, dynamic>);
       }
-      return DailySale(date: DateTime.now(), quantity: 0, deliveryCount: 0);
+      // Jika belum ada penjualan hari ini, kembalikan data kosong yang valid
+      return DailySale(
+        date: DateTime.now(),
+        quantity: 0,
+        deliveryCount: 0,
+        // dayOfWeek akan dihitung otomatis oleh constructor
+      );
     });
   }
 
