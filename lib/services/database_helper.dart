@@ -4,10 +4,9 @@ import 'package:damiu/models/customer_model.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:damiu/models/delivery_log_model.dart'; // Impor model DeliveryLogItem
-import 'package:damiu/models/daily_sale_model.dart'; // Impor model DailySale
+import 'package:damiu/models/delivery_log_model.dart';
+import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/models/daily_stock_model.dart';
-// import intl
 import 'package:intl/intl.dart';
 
 class DatabaseHelper {
@@ -25,44 +24,41 @@ class DatabaseHelper {
 
   Future<Database> _initDatabase() async {
     String documentsPath = await getDatabasesPath();
-    String path = join(documentsPath, 'damiu_app.db'); // Nama database Anda
+    String path = join(documentsPath, 'damiu_app.db');
 
     return await openDatabase(
       path,
-      version: 9, // NAIKKAN VERSI DATABASE KE 9
+      version: 9,
       onCreate: _onCreate,
-      onUpgrade: _onUpgrade, // Tambahkan callback onUpgrade
+      onUpgrade: _onUpgrade,
     );
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    // Buat tabel 'daily_sales'
     await db.execute('''
       CREATE TABLE daily_sales(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT UNIQUE, -- Pastikan hanya ada satu entri per tanggal
-        day_of_week INTEGER, -- Tambahkan kolom day_of_week
-        delivery_count INTEGER DEFAULT 0, -- Tambahkan kolom delivery_count
+        date TEXT UNIQUE,
+        day_of_week INTEGER,
+        delivery_count INTEGER DEFAULT 0,
         quantity INTEGER,
-        is_synced INTEGER DEFAULT 0, -- 0 for false, 1 for true
-        employee_uid TEXT -- Siapa yang menginput/terakhir update ringkasan ini
+        is_synced INTEGER DEFAULT 0,
+        employee_uid TEXT
       )
     ''');
 
-    // Buat tabel 'delivery_log'
     await db.execute('''
       CREATE TABLE delivery_log(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT, -- Simpan sebagai ISO8601 String (Tanggal dan Waktu)
+        timestamp TEXT,
         gallons INTEGER,
         empty_gallons_returned INTEGER DEFAULT 0,
         employee_uid TEXT,
-        is_summarized INTEGER DEFAULT 0, -- 0 jika belum diringkas ke daily_sales, 1 jika sudah
-        is_no_delivery_marker INTEGER DEFAULT 0 -- 0 jika pengantaran normal, 1 jika penanda "tidak ada pengantaran"
+        is_summarized INTEGER DEFAULT 0,
+        is_no_delivery_marker INTEGER DEFAULT 0
       )
     ''');
 
-    // Buat tabel 'daily_stock'
     await db.execute('''
       CREATE TABLE daily_stock(
         date TEXT PRIMARY KEY,
@@ -73,7 +69,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // Buat tabel 'orders'
     await db.execute('''
       CREATE TABLE orders(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,7 +84,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // Buat tabel 'customers'
     await db.execute('''
       CREATE TABLE customers(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,7 +96,6 @@ class DatabaseHelper {
     ''');
   }
 
-  // Metode untuk menangani upgrade skema database
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('''
@@ -146,7 +139,6 @@ class DatabaseHelper {
       await db.execute('ALTER TABLE daily_stock ADD COLUMN initial_empty_stock INTEGER NOT NULL DEFAULT 0');
     }
     if (oldVersion < 7) {
-      // Buat tabel 'orders' jika upgrade dari versi sebelumnya
       await db.execute('''
         CREATE TABLE orders(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -163,7 +155,6 @@ class DatabaseHelper {
       ''');
     }
     if (oldVersion < 8) {
-      // Buat tabel 'customers' jika upgrade dari versi sebelumnya
       await db.execute('''
         CREATE TABLE customers(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -175,14 +166,11 @@ class DatabaseHelper {
       ''');
     }
     if (oldVersion < 9) {
-      // This block runs for users upgrading from a version < 9.
-      // The 'customers' table might already exist from the 'oldVersion < 8' block.
-      // We just need to add the new column.
       await db.execute('ALTER TABLE customers ADD COLUMN is_synced INTEGER NOT NULL DEFAULT 0');
     }
   }
-  // --- Operasi CRUD untuk DailySale ---
 
+  // --- Operasi CRUD untuk DailySale ---
   Future<int> upsertDailySummary(DailySale sale) async {
     Database db = await database;
     return await db.insert('daily_sales', sale.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
@@ -207,7 +195,6 @@ class DatabaseHelper {
       return DailySale.fromMap(maps[i]);
     });
   }
-
 
   Future<int> markSaleAsSynced(int id) async {
     Database db = await database;
@@ -253,7 +240,6 @@ class DatabaseHelper {
   }
 
   // --- Operasi untuk DeliveryLogItem ---
-
   Future<int> insertDeliveryLog(DeliveryLogItem logItem) async {
     Database db = await database;
     return await db.insert('delivery_log', logItem.toMap());
@@ -395,7 +381,6 @@ class DatabaseHelper {
   }
 
   // --- Operasi untuk DailyStock Lokal ---
-
   Future<int> upsertDailyStock(DailyStock stock) async {
     final db = await database;
     return await db.insert(
@@ -435,7 +420,6 @@ class DatabaseHelper {
   }
 
   // --- Operasi untuk Order ---
-
   Future<int> insertOrder(Order order) async {
     final db = await database;
     return await db.insert('orders', order.toMap());
@@ -470,10 +454,6 @@ class DatabaseHelper {
   }
 
   // --- Operasi untuk Customer ---
-
-  // Upsert (Update or Insert) a customer.
-  // ConflictAlgorithm.ignore ensures that if a customer with the same name
-  // already exists, the insert is simply ignored, preventing duplicates.
   Future<int> upsertCustomer(Customer customer) async {
     final db = await database;
     return await db.insert('customers', customer.toMap(),
@@ -504,5 +484,30 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  // --- FUNGSI BARU UNTUK MENGELOLA PELANGGAN ---
+  Future<int> updateCustomer(Customer customer) async {
+    final db = await database;
+    return await db.update(
+      'customers',
+      customer.toMap(),
+      where: 'id = ?',
+      whereArgs: [customer.id],
+    );
+  }
+
+  Future<int> deleteCustomer(int id) async {
+    final db = await database;
+    return await db.delete(
+      'customers',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteAllCustomers() async {
+    final db = await database;
+    return await db.delete('customers');
   }
 }

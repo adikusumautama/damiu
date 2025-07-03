@@ -1,5 +1,3 @@
-// lib/screens/home/karyawan_home_screen.dart
-
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:damiu/models/daily_stock_model.dart';
@@ -9,7 +7,8 @@ import 'package:damiu/screens/other/customer_book_screen.dart';
 import 'package:damiu/screens/other/daily_sales_input_screen.dart';
 import 'package:damiu/screens/other/empty_gallon_input_screen.dart';
 import 'package:damiu/screens/other/karyawan_profile_screen.dart';
-import 'package:damiu/screens/other/local_sales_management_screen.dart' hide Padding, SizedBox;
+import 'package:damiu/screens/other/local_sales_management_screen.dart'
+    hide Padding, SizedBox;
 import 'package:damiu/screens/other/order_input_screen.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
@@ -91,7 +90,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
         _isOffline = true;
       });
     }
-
     _connectivitySubscription =
         Connectivity().onConnectivityChanged.listen(_updateConnectionStatus);
   }
@@ -122,14 +120,11 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
       print("Sync skipped: No internet connection.");
       return;
     }
-
     setState(() {
       _isDailySyncing = true;
     });
-
     await _syncService.syncAllUnsummarizedDeliveryLogs();
     await _syncService.syncCustomers();
-
     if (mounted) {
       setState(() {
         _isDailySyncing = false;
@@ -240,17 +235,17 @@ class KaryawanBerandaContent extends StatefulWidget {
   const KaryawanBerandaContent({
     super.key,
   });
-
   @override
   State<KaryawanBerandaContent> createState() => _KaryawanBerandaContentState();
 }
 
-class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
+class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
+    with WidgetsBindingObserver {
   final FirestoreService _firestoreService = FirestoreService();
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final AuthService _authService = AuthService();
-  final DateTime _today =
-      DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+
+  late DateTime _today;
 
   List<Order> _todaysOrders = [];
   List<Order> _filteredOrders = [];
@@ -259,25 +254,53 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
       _pendingCount = 0,
       _inDeliveryCount = 0,
       _deliveredCount = 0;
-
   int _totalGallonsOut = 0;
   int _totalGallonsIn = 0;
   int _deliveryCountToday = 0;
   bool _isLoading = true;
-
   final GlobalKey _dialogKey = GlobalKey();
   bool _isDialogShown = false;
-
-  // MODIFIED: Stream untuk data stok dari Firestore
   Stream<DailyStock?>? _firestoreStockStream;
 
   @override
   void initState() {
     super.initState();
-    _loadOfflineData();
-    // MODIFIED: Inisialisasi stream dari Firestore
-    _firestoreStockStream = _firestoreService.getDailyStockStream(_today);
+    WidgetsBinding.instance.addObserver(this);
+
+    _today =
+        DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    _initializeAndLoadData();
   }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final now = DateTime.now();
+      final currentDate = DateTime(now.year, now.month, now.day);
+      if (_today.isBefore(currentDate)) {
+        print("Hari telah berganti. Memuat ulang data untuk hari ini...");
+        setState(() {
+          _today = currentDate;
+        });
+        _initializeAndLoadData();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // --- PERUBAHAN DI SINI ---
+  Future<void> _initializeAndLoadData() async {
+    setState(() {
+      _firestoreStockStream = _firestoreService.getDailyStockStream(_today);
+    });
+    await _loadOfflineData();
+  }
+  // --- AKHIR PERUBAHAN ---
 
   Future<void> _showSetInitialStockDialog(int currentFilledStock) async {
     final TextEditingController filledStockController = TextEditingController(
@@ -380,7 +403,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
     });
   }
 
-  // MODIFIED: Widget _buildStockInfoCard sekarang menerima DailyStock dari StreamBuilder
   Widget _buildStockInfoCard(
       DailyStock? stock, int totalOut, int totalIn, int deliveryCount) {
     final initialStock = stock?.initialStock ?? 0;
@@ -517,7 +539,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
     });
   }
 
-  // MODIFIED: _loadOfflineData sekarang hanya memuat data transaksi lokal
   Future<void> _loadOfflineData() async {
     if (!mounted) return;
     setState(() {
@@ -543,6 +564,14 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
         _filterOrders();
         _isLoading = false;
       });
+
+      final stockData = await _firestoreStockStream?.first;
+      if (stockData == null && !_isDialogShown) {
+        _isDialogShown = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showSetInitialStockDialog(0);
+        });
+      }
     }
   }
 
@@ -598,7 +627,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
     return _isLoading
         ? const Center(child: CircularProgressIndicator())
         : RefreshIndicator(
-            onRefresh: _loadOfflineData,
+            onRefresh: _initializeAndLoadData,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
@@ -608,25 +637,16 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // MODIFIED: Menggunakan StreamBuilder untuk data stok
                         StreamBuilder<DailyStock?>(
                           stream: _firestoreStockStream,
                           builder: (context, snapshot) {
                             if (snapshot.connectionState ==
-                                ConnectionState.waiting && !_isLoading) {
-                              // Tampilkan loading kecil jika data lain sudah ada
+                                    ConnectionState.waiting &&
+                                !_isLoading) {
                               return const LinearProgressIndicator();
                             }
-                            
-                            final dailyStock = snapshot.data;
 
-                            // Tampilkan dialog jika stok belum diatur
-                            if (!snapshot.hasData && !_isDialogShown) {
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                _showSetInitialStockDialog(0);
-                                _isDialogShown = true;
-                              });
-                            }
+                            final dailyStock = snapshot.data;
 
                             return _buildStockInfoCard(
                                 dailyStock,
@@ -725,8 +745,8 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
                       ],
                     ),
                     const Divider(),
-                    _buildDetailRow(
-                        Icons.local_drink_outlined, '${order.gallonQuantity} Galon'),
+                    _buildDetailRow(Icons.local_drink_outlined,
+                        '${order.gallonQuantity} Galon'),
                     if (order.otherItems != null &&
                         order.otherItems!.isNotEmpty)
                       _buildDetailRow(
