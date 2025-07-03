@@ -522,7 +522,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
 
               final allTodaysOrders = snapshot.data ?? [];
 
-              // --- PERUBAHAN LOGIKA FILTER DI SINI ---
               final pendingOrders = allTodaysOrders
                   .where((o) => o.status == OrderStatus.pending)
                   .toList();
@@ -532,14 +531,12 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
               final completedOrders = allTodaysOrders
                   .where((o) => o.status == OrderStatus.delivered)
                   .toList();
-              // --- AKHIR PERUBAHAN LOGIKA FILTER ---
 
               return FutureBuilder(
                   future: _syncLocalOrders(allTodaysOrders),
                   builder: (context, syncSnapshot) {
-                    // --- PERUBAHAN PADA DefaultTabController ---
                     return DefaultTabController(
-                      length: 3, // Diubah menjadi 3
+                      length: 3,
                       child: NestedScrollView(
                         headerSliverBuilder: (context, innerBoxIsScrolled) {
                           return [
@@ -567,13 +564,11 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                             ),
                             SliverPersistentHeader(
                               delegate: _SliverAppBarDelegate(
-                                // --- PERUBAHAN PADA TabBar ---
                                 TabBar(
-                                  isScrollable: true, // Agar muat di layar kecil
                                   tabs: [
                                     Tab(
                                         text:
-                                            'Belum Diantar (${pendingOrders.length})'),
+                                            'Pesanan (${pendingOrders.length})'),
                                     Tab(
                                         text:
                                             'Diantar (${inDeliveryOrders.length})'),
@@ -582,13 +577,11 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                                             'Selesai (${completedOrders.length})'),
                                   ],
                                 ),
-                                // --- AKHIR PERUBAHAN PADA TabBar ---
                               ),
                               pinned: true,
                             ),
                           ];
                         },
-                        // --- PERUBAHAN PADA TabBarView ---
                         body: TabBarView(
                           children: [
                             _buildOrderListView(pendingOrders,
@@ -602,7 +595,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                                     'Belum ada pesanan yang selesai hari ini.'),
                           ],
                         ),
-                        // --- AKHIR PERUBAHAN PADA TabBarView ---
                       ),
                     );
                   });
@@ -702,7 +694,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
                 const SizedBox(width: 8),
                 Chip(
                   label: Text(
-                    order.status.replaceAll('_', ' ').toUpperCase(),
+                    order.status,
                     style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                   backgroundColor: getStatusColor(order.status),
@@ -830,7 +822,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
     );
   }
 
-  // --- PERUBAHAN PADA TOMBOL AKSI PESANAN ---
   Widget _buildOrderActionButtons(Order order) {
     switch (order.status) {
       case OrderStatus.pending:
@@ -882,7 +873,6 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
         return const SizedBox.shrink();
     }
   }
-  // --- AKHIR PERUBAHAN TOMBOL AKSI ---
 
   Widget _buildDetailRow(IconData icon, String text) {
     return Padding(
@@ -967,6 +957,7 @@ class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
   }
 }
 
+// --- PERUBAHAN PADA _SliverAppBarDelegate ---
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   _SliverAppBarDelegate(this._tabBar);
 
@@ -980,8 +971,17 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
+    // Membungkus TabBar dengan Container untuk styling
     return Container(
-      color: Theme.of(context).scaffoldBackgroundColor,
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).dividerColor,
+            width: 1.0,
+          ),
+        ),
+      ),
       child: _tabBar,
     );
   }
