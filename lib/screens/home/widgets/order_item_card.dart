@@ -5,6 +5,7 @@
 
 import 'package:damiu/models/order_model.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 class OrderItemCard extends StatelessWidget {
   final Order order;
@@ -20,15 +21,16 @@ class OrderItemCard extends StatelessWidget {
     required this.onCancelOrder,
   });
   
-  Color _getStatusColor(String status) {
+  Color _getStatusColor(String? status) {
     switch (status) {
       case OrderStatus.delivered:
         return Colors.green;
       case OrderStatus.inDelivery:
         return Colors.orange;
       case OrderStatus.pending:
-      default:
         return Colors.blue;
+      default:
+        return Colors.grey;
     }
   }
 
@@ -47,14 +49,16 @@ class OrderItemCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    order.customerName,
+                    (order.customerName != null && order.customerName!.trim().isNotEmpty)
+                        ? order.customerName!
+                        : (order.toMapForFirestore()['customerName'] ?? '-'),
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Chip(
                   label: Text(
-                    order.status,
+                    order.status ?? '-',
                     style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                   backgroundColor: _getStatusColor(order.status),
@@ -64,13 +68,23 @@ class OrderItemCard extends StatelessWidget {
               ],
             ),
             const Divider(),
-            _buildDetailRow(Icons.local_drink_outlined, '${order.gallonQuantity} Galon'),
+            _buildDetailRow(Icons.local_drink_outlined, '${order.gallonQuantity ?? 0} Galon'),
             if (order.otherItems != null && order.otherItems!.isNotEmpty)
               _buildDetailRow(Icons.add_shopping_cart_outlined, order.otherItems!),
             if (order.address != null && order.address!.isNotEmpty)
               _buildDetailRow(Icons.location_on_outlined, order.address!),
             if (order.phoneNumber != null && order.phoneNumber!.isNotEmpty)
               _buildDetailRow(Icons.phone_outlined, order.phoneNumber!),
+            if (order.createdAt != null)
+              _buildDetailRow(
+                Icons.access_time,
+                'Dibuat: ' + DateFormat('dd MMM yyyy, HH:mm').format(order.createdAt!),
+              ),
+            if (order.deliveredAt != null)
+              _buildDetailRow(
+                Icons.check_circle_outline,
+                'Terkirim: ' + DateFormat('dd MMM yyyy, HH:mm').format(order.deliveredAt!),
+              ),
             const SizedBox(height: 8),
             _buildOrderActionButtons(),
           ],

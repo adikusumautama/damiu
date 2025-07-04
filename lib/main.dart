@@ -65,14 +65,17 @@ class AuthWrapper extends StatelessWidget {
                 if (userModelSnapshot.connectionState ==
                     ConnectionState.waiting) {
                   return const Scaffold(
-                      body: Center(child: CircularProgressIndicator()));
+                    body: Center(child: CircularProgressIndicator()),
+                  );
                 }
                 if (userModelSnapshot.hasError ||
                     !userModelSnapshot.hasData ||
                     userModelSnapshot.data == null) {
                   // Error atau tidak ada data user, mungkin logout atau arahkan ke error page
                   // Jika terjadi error atau data pengguna tidak ditemukan, arahkan kembali ke halaman login/register
-                  print("Error fetching user model or no data: ${userModelSnapshot.error}. Redirecting to AuthToggle.");
+                  print(
+                    "Error fetching user model or no data: ${userModelSnapshot.error}. Redirecting to AuthToggle.",
+                  );
                   // Sebaiknya logout jika data user tidak ditemukan
                   // Future.microtask(() => AuthService().signOut()); // Hindari setState selama build
                   return const AuthToggle(); // Kembali ke halaman login/register
@@ -87,7 +90,9 @@ class AuthWrapper extends StatelessWidget {
                   case UserRoles.pelanggan:
                     return const PelangganHomeScreen();
                   default:
-                    print("Unknown role: ${userModel.role}. Redirecting to AuthToggle.");
+                    print(
+                      "Unknown role: ${userModel.role}. Redirecting to AuthToggle.",
+                    );
                     return const AuthToggle(); // Peran tidak diketahui, kembali ke login/register
                 }
               },
@@ -98,20 +103,28 @@ class AuthWrapper extends StatelessWidget {
           }
         }
         // Menunggu koneksi stream
-        return const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        );
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
       },
     );
   }
 }
 
 void main() async {
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.dumpErrorToConsole(details);
+    // Tambahan: print ke console agar error selalu terlihat
+    print('FLUTTER ERROR:');
+    print(details.exceptionAsString());
+    if (details.stack != null) {
+      print(details.stack);
+    }
+  };
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting('id_ID', null); // Tambahkan ini untuk format tanggal Indonesia
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await initializeDateFormatting(
+    'id_ID',
+    null,
+  ); // Tambahkan ini untuk format tanggal Indonesia
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const MainApp());
 }

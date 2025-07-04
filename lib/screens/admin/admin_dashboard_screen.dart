@@ -232,7 +232,6 @@ class _BerandaAdminContentState extends State<BerandaAdminContent> {
                     await _firestoreService.setInitialStock(
                         date: _today,
                         filledStock: filledStock,
-                        emptyStock: emptyStock,
                         updatedByUid: uid);
                     if (mounted) Navigator.of(context).pop();
                   }

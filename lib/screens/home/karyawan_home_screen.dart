@@ -6,73 +6,72 @@
 
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:damiu/models/daily_sale_model.dart';
-import 'package:damiu/models/daily_stock_model.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/models/user_model.dart';
-import 'package:damiu/screens/other/customer_book_screen.dart';
-import 'package:damiu/screens/other/karyawan_profile_screen.dart';
-import 'package:damiu/screens/other/local_sales_management_screen.dart';
+import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/firestore_service.dart';
+import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/services/sync_service.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:rxdart/rxdart.dart'; // Impor rxdart untuk CombineLatestStream
-
-// Impor widget-widget baru
-import 'widgets/stock_info_card.dart';
-import 'widgets/home_action_buttons.dart';
-import 'widgets/order_list_view.dart';
+import 'widgets/add_order_dialog.dart';
+import 'widgets/order_item_card.dart';
+import 'widgets/resource_board.dart';
 
 class KaryawanHomeScreen extends StatefulWidget {
   const KaryawanHomeScreen({super.key});
-
   @override
   State<KaryawanHomeScreen> createState() => _KaryawanHomeScreenState();
 }
 
-class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
-    with WidgetsBindingObserver {
+class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
   int _selectedIndex = 0;
-  UserModel? _currentUserModel;
-  final AuthService _authService = AuthService();
+  bool _isOnline = true;
+  late StreamSubscription _connectivitySubscription;
+  final FirestoreService _firestoreService = FirestoreService();
+  final DatabaseHelper _dbHelper = DatabaseHelper();
   final SyncService _syncService = SyncService();
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  final AuthService _authService = AuthService();
+  UserModel? _currentUser;
+  List<Order> _localOrders = [];
+  DateTime? _customDateTime; // Tambahan: tanggal/waktu custom
 
-  late List<Widget> _widgetOptions;
-
-  static const List<String> _appBarTitles = <String>[
-    'Beranda',
-    'Buku Pelanggan',
-    'Profil Saya',
-  ];
+  // Getter untuk tanggal & waktu aktif (custom jika ada, else DateTime.now())
+  DateTime get _activeDateTime => _customDateTime ?? DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _widgetOptions = <Widget>[
-      const KaryawanBerandaContent(),
-      const CustomerBookScreen(),
-      const KaryawanProfileScreen(),
-    ];
-    _initializeConnectivity();
+    _initConnectivity();
     _loadCurrentUser();
-    WidgetsBinding.instance.addObserver(this);
+    _loadLocalOrders();
   }
 
   @override
   void dispose() {
-    _connectivitySubscription?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
+    _connectivitySubscription.cancel();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _performFullSync();
+  void _initConnectivity() async {
+    final results = await Connectivity().checkConnectivity();
+    final result = results.isNotEmpty ? results.first : ConnectivityResult.none;
+    _updateConnectionStatus(result);
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
+      final result = results.isNotEmpty ? results.first : ConnectivityResult.none;
+      _updateConnectionStatus(result);
+    });
+  }
+
+  void _updateConnectionStatus(ConnectivityResult result) async {
+    final online = result != ConnectivityResult.none;
+    if (online && !_isOnline) {
+      // Baru online, lakukan sinkronisasi
+      await _syncService.syncAllData();
+      setState(() => _isOnline = true);
+    } else if (!online && _isOnline) {
+      setState(() => _isOnline = false);
     }
   }
 
@@ -80,445 +79,413 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
     final user = _authService.getCurrentUser();
     if (user != null) {
       final userModel = await _authService.getUserModel(user.uid);
-      if (mounted) {
-        setState(() => _currentUserModel = userModel);
-      }
+      setState(() => _currentUser = userModel);
     }
   }
 
-  Future<void> _initializeConnectivity() async {
-    final result = await Connectivity().checkConnectivity();
-    _updateConnectionStatus(result);
-    _connectivitySubscription =
-        Connectivity().onConnectivityChanged.listen(_updateConnectionStatus);
-  }
-
-  void _updateConnectionStatus(List<ConnectivityResult> result) {
-    final hasConnection = !result.contains(ConnectivityResult.none);
-    if (hasConnection) {
-      _performFullSync();
-    } else {
-       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Anda sedang offline.'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 4),
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _performFullSync() async {
-    await _syncService.syncAllData();
+  Future<void> _loadLocalOrders() async {
+    final orders = await _dbHelper.getUnsyncedOrders();
+    setState(() => _localOrders = orders);
   }
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    setState(() => _selectedIndex = index);
+  }
+
+  // Tambahan: fungsi untuk memilih tanggal & waktu
+  Future<void> _pickDateTime() async {
+    final now = DateTime.now();
+    final initialDate = _customDateTime ?? now;
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 2),
+    );
+    if (pickedDate != null) {
+      final pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(initialDate),
+      );
+      if (pickedTime != null) {
+        setState(() {
+          _customDateTime = DateTime(
+            pickedDate.year,
+            pickedDate.month,
+            pickedDate.day,
+            pickedTime.hour,
+            pickedTime.minute,
+          );
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(_appBarTitles[_selectedIndex])),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _widgetOptions,
-      ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: <Widget>[
-            UserAccountsDrawerHeader(
-              accountName: Text(_currentUserModel?.name ?? 'Karyawan', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              accountEmail: Text(_currentUserModel?.email ?? 'Memuat...'),
-              currentAccountPicture: CircleAvatar(
-                backgroundColor: Colors.white,
-                child: Text(
-                  _currentUserModel?.name?.substring(0, 1).toUpperCase() ?? 'K',
-                  style: const TextStyle(fontSize: 40.0),
-                ),
-              ),
+    Widget summaryWidget = _isOnline
+        ? StreamBuilder<List<Order>>(
+            stream: _firestoreService.getTodaysOrdersStream(),
+            builder: (context, snapshot) {
+              final orders = snapshot.data ?? [];
+              return _OrderSummary(orders: orders, isOnline: _isOnline);
+            },
+          )
+        : _OrderSummary(orders: _localOrders, isOnline: _isOnline);
+
+    final List<Widget> _pages = [
+      Column(
+        children: [
+          if (!_isOnline)
+            Container(
+              width: double.infinity,
+              color: Colors.orange.shade100,
+              padding: const EdgeInsets.all(8),
+              child: const Text('Mode Offline: Data diambil dari lokal', style: TextStyle(color: Colors.orange)),
             ),
-            ListTile(
-              leading: const Icon(Icons.storage_outlined),
-              title: const Text('Kelola Data Lokal'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => Scaffold(
-                      appBar: AppBar(title: const Text("Kelola Data Lokal")),
-                      body: const LocalSalesManagementWidget(),
-                    ),
+          summaryWidget,
+          ResourceBoard(
+            isOnline: _isOnline,
+            employeeUid: _currentUser?.uid,
+            onSetStock: () async {
+              final result = await showDialog<Map<String, int>>(
+                context: context,
+                builder: (ctx) => _SetStockDialog(),
+              );
+              if (result != null) {
+                if (_isOnline) {
+                  await _firestoreService.setInitialStock(
+                    date: DateTime.now(),
+                    filledStock: result['stock'] ?? 0,
+                    updatedByUid: _currentUser?.uid ?? '-',
+                  );
+                } else {
+                  await _dbHelper.setInitialStock(
+                    date: DateTime.now(),
+                    filledStock: result['stock'] ?? 0,
+                    updatedByUid: _currentUser?.uid ?? '-',
+                  );
+                }
+                setState(() {});
+              }
+            },
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: Stack(
+              children: [
+                _isOnline
+                    ? OrdersStreamWidget(
+                        onStartDelivery: (order) async {
+                          await _firestoreService.updateOrderStatus(order.firestoreId!, OrderStatus.inDelivery);
+                        },
+                        onCompleteDelivery: (order) async {
+                          // ONLINE: Kurangi stok galon via transaksi
+                          await _firestoreService.completeOrderTransaction(order);
+                          // Update daily_sales Firestore (sudah dilakukan di transaksi, tapi pastikan juga di sini jika perlu)
+                          await _firestoreService.recordSale(
+                            order.gallonQuantity ?? 0,
+                            1,
+                          );
+                        },
+                      )
+                    : OrdersLocalWidget(
+                        orders: _localOrders,
+                        onStartDelivery: (order) async {
+                          await _dbHelper.updateOrderStatus(order.id!, OrderStatus.inDelivery);
+                          await _loadLocalOrders();
+                        },
+                        onCompleteDelivery: (order) async {
+                          await _dbHelper.updateOrderStatus(order.id!, OrderStatus.delivered, setDeliveredTime: true);
+                          // OFFLINE: Kurangi stok galon tersedia
+                          final stock = await _dbHelper.getDailyStock(DateTime.now());
+                          final newStock = (stock?.initialStock ?? 0) - (order.gallonQuantity ?? 0);
+                          await _dbHelper.setInitialStock(
+                            date: DateTime.now(),
+                            filledStock: newStock < 0 ? 0 : newStock,
+                            updatedByUid: _currentUser?.uid ?? '-',
+                          );
+                          // Update daily_sales lokal
+                          final today = DateTime.now();
+                          final oldSale = await _dbHelper.getDailySaleByDate(today);
+                          final newQty = (oldSale?.quantity ?? 0) + (order.gallonQuantity ?? 0);
+                          final newCount = (oldSale?.deliveryCount ?? 0) + 1;
+                          await _dbHelper.upsertDailySummary(
+                            DailySale(
+                              date: today,
+                              deliveryCount: newCount,
+                              quantity: newQty,
+                              isSynced: false,
+                              employeeUid: _currentUser?.uid,
+                            ),
+                          );
+                          await _loadLocalOrders();
+                        },
+                      ),
+                Positioned(
+                  bottom: 16,
+                  right: 16,
+                  child: FloatingActionButton.extended(
+                    icon: const Icon(Icons.add),
+                    label: const Text('Catat Pesanan'),
+                    onPressed: () async {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AddOrderDialog(
+                          onSubmit: ({
+                            required String customerName,
+                            required int gallonQuantity,
+                            String? otherItems,
+                            String? address,
+                            String? phoneNumber,
+                          }) async {
+                            final newOrder = Order(
+                              customerName: customerName,
+                              gallonQuantity: gallonQuantity,
+                              otherItems: otherItems,
+                              address: address,
+                              phoneNumber: phoneNumber,
+                              status: OrderStatus.pending,
+                              createdAt: DateTime.now(),
+                              employeeUid: _currentUser?.uid,
+                              isSynced: _isOnline, // Jika online, langsung sync
+                            );
+                            if (_isOnline) {
+                              await _firestoreService.addOrder(newOrder);
+                            } else {
+                              await _dbHelper.insertOrder(newOrder);
+                              await _loadLocalOrders();
+                            }
+                            if (mounted) setState(() {});
+                          },
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      const Center(child: Text('Buku Pelanggan')), // Ganti dengan widget pelanggan
+      const Center(child: Text('Profil Saya')), // Ganti dengan widget profil
+    ];
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_selectedIndex == 0 ? 'Beranda' : _selectedIndex == 1 ? 'Pelanggan' : 'Profil'),
+            Text(
+              DateFormat('EEEE, dd MMMM yyyy • HH:mm').format(_customDateTime ?? DateTime.now()),
+              style: const TextStyle(fontSize: 13, color: Colors.white70),
             ),
           ],
         ),
       ),
+      body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Beranda'),
-          BottomNavigationBarItem(icon: Icon(Icons.book_outlined), label: 'Pelanggan'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profil'),
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'),
+          BottomNavigationBarItem(icon: Icon(Icons.book), label: 'Pelanggan'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
         ],
         currentIndex: _selectedIndex,
-        selectedItemColor: Theme.of(context).primaryColor,
         onTap: _onItemTapped,
       ),
-    );
-  }
-}
-
-// =================================================
-// KONTEN BERANDA KARYAWAN (inti dari file ini)
-// =================================================
-
-class KaryawanBerandaContent extends StatefulWidget {
-  const KaryawanBerandaContent({super.key});
-  @override
-  State<KaryawanBerandaContent> createState() => _KaryawanBerandaContentState();
-}
-
-class _KaryawanBerandaContentState extends State<KaryawanBerandaContent>
-    with WidgetsBindingObserver {
-  final FirestoreService _firestoreService = FirestoreService();
-  final AuthService _authService = AuthService();
-
-  late DateTime _today;
-  late Stream<List<Order>> _ordersStream;
-  late Stream<DailyStock?> _stockStream;
-  late Stream<DailySale> _dailySaleStream;
-  late Stream<int> _returnedGallonsStream;
-
-  bool _isLoading = true;
-  bool _isDialogShown = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-    _initializeStreams();
-    _checkAndCarryOverStock();
-  }
-  
-  void _initializeStreams() {
-    setState(() {
-      _stockStream = _firestoreService.getDailyStockStream(_today);
-      _ordersStream = _firestoreService.getTodaysOrdersStream();
-      _dailySaleStream = _firestoreService.getTodaysDailySaleStream();
-      _returnedGallonsStream = _firestoreService.getTodaysReturnedGallonsStream();
-      _isLoading = false;
-    });
-  }
-  
-  Future<void> _refreshData() async {
-    _initializeStreams();
-    await _checkAndCarryOverStock();
-  }
-  
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      final now = DateTime.now();
-      final currentDate = DateTime(now.year, now.month, now.day);
-      if (_today.isBefore(currentDate)) {
-        print("Hari telah berganti. Memuat ulang data untuk hari ini...");
-        setState(() {
-          _today = currentDate;
-          _isLoading = true; // Show loading indicator while re-initializing
-        });
-        _initializeStreams();
-        _checkAndCarryOverStock();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  Future<void> _checkAndCarryOverStock() async {
-    final todayStock = await _firestoreService.getDailyStockOnce(_today);
-
-    if (todayStock == null) {
-      final yesterday = _today.subtract(const Duration(days: 1));
-      final yesterdayStock = await _firestoreService.getDailyStockOnce(yesterday);
-      final String? uid = _authService.getCurrentUser()?.uid;
-
-      if (uid != null) {
-        int initialStock = yesterdayStock?.currentStock ?? 0;
-        await _firestoreService.setInitialStock(
-          date: _today,
-          filledStock: initialStock,
-          emptyStock: 0,
-          updatedByUid: uid,
-        );
-        
-        if (yesterdayStock == null && mounted && !_isDialogShown) {
-          _isDialogShown = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _showSetInitialStockDialog(0);
-          });
-        }
-      }
-    }
-  }
-
-  Future<void> _showSetInitialStockDialog(int currentFilledStock) async {
-    final TextEditingController filledStockController = TextEditingController(
-        text: currentFilledStock > 0 ? currentFilledStock.toString() : '');
-    final formKey = GlobalKey<FormState>();
-
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Atur Stok Awal Galon Hari Ini'),
-          content: SingleChildScrollView(
-            child: Form(
-              key: formKey,
-              child: ListBody(
-                children: <Widget>[
-                  const Text('Masukkan jumlah galon isi yang tersedia di awal hari kerja.'),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: filledStockController,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Jumlah Stok Awal',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    validator: (value) {
-                      if (value == null || value.isEmpty) return 'Stok awal tidak boleh kosong';
-                      if (int.tryParse(value) == null || int.parse(value) < 0) return 'Masukkan angka yang valid';
-                      return null;
-                    },
-                  ),
-                ],
-              ),
+      drawer: Drawer(
+        child: ListView(
+          children: [
+            UserAccountsDrawerHeader(
+              accountName: Text(_currentUser?.name ?? '-'),
+              accountEmail: Text(_currentUser?.email ?? '-'),
+              currentAccountPicture: const CircleAvatar(child: Icon(Icons.person)),
             ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Simpan'),
-              onPressed: () async {
-                if (formKey.currentState!.validate()) {
-                  final int filledStock = int.parse(filledStockController.text);
-                  final String? uid = _authService.getCurrentUser()?.uid;
-                  if (uid != null) {
-                    await _firestoreService.setInitialStock(
-                        date: _today, filledStock: filledStock, emptyStock: 0, updatedByUid: uid);
-                    if (mounted) Navigator.of(context).pop();
-                  }
-                }
+            ListTile(
+              leading: const Icon(Icons.sync),
+              title: const Text('Sinkronisasi Manual'),
+              onTap: () async {
+                await _syncService.syncAllData();
+                if (mounted) Navigator.pop(context);
               },
             ),
-            if (currentFilledStock > 0)
-              TextButton(child: const Text('Batal'), onPressed: () => Navigator.of(context).pop()),
+            ListTile(
+              leading: const Icon(Icons.calendar_today),
+              title: const Text('Set Tanggal & Waktu'),
+              subtitle: _customDateTime != null
+                  ? Text(DateFormat('dd MMM yyyy • HH:mm').format(_customDateTime!))
+                  : null,
+              onTap: () async {
+                await _pickDateTime();
+                if (mounted) Navigator.pop(context);
+              },
+            ),
+            if (_customDateTime != null)
+              ListTile(
+                leading: const Icon(Icons.refresh),
+                title: const Text('Reset ke Waktu Sekarang'),
+                onTap: () {
+                  setState(() {
+                    _customDateTime = null;
+                  });
+                  Navigator.pop(context);
+                },
+              ),
           ],
-        );
-      },
-    ).then((_) {
-      _isDialogShown = false;
-    });
-  }
-
-  Future<void> _startDelivery(Order order) async {
-    if (order.firestoreId != null) {
-      final error = await _firestoreService.updateOrderStatus(order.firestoreId!, OrderStatus.inDelivery);
-      if (mounted && error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal memulai pengantaran: $error')));
-      }
-    }
-  }
-
-  Future<void> _completeDelivery(Order order) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Selesaikan Pengantaran'),
-        content: Text('Yakin pesanan untuk ${order.customerName} sudah selesai diantar?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Ya, Selesai')),
-        ],
+        ),
       ),
     );
-
-    if (confirm == true) {
-      final error = await _firestoreService.completeOrderTransaction(order);
-      if (mounted && error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal menyelesaikan pesanan: $error')),
-        );
-      }
-      // No need for success message, UI will update automatically from stream
-    }
   }
+} // Penutup class _KaryawanHomeScreenState
 
-  Future<void> _cancelOrder(Order order) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Batalkan Pesanan'),
-        content: Text('Yakin ingin membatalkan dan menghapus pesanan untuk ${order.customerName}?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Tidak')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), style: FilledButton.styleFrom(backgroundColor: Colors.red), child: const Text('Ya, Batalkan')),
-        ],
-      ),
-    );
-
-    if (confirm == true && order.firestoreId != null) {
-      await _firestoreService.deleteOrder(order.firestoreId!);
-    }
-  }
-
+class OrdersStreamWidget extends StatelessWidget {
+  final void Function(Order) onStartDelivery;
+  final void Function(Order) onCompleteDelivery;
+  OrdersStreamWidget({super.key, required this.onStartDelivery, required this.onCompleteDelivery});
+  final FirestoreService _firestoreService = FirestoreService();
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    
-    return StreamBuilder<List<dynamic>>(
-      stream: CombineLatestStream.list([
-        _ordersStream,
-        _dailySaleStream,
-        _stockStream,
-        _returnedGallonsStream,
-      ]),
+    return StreamBuilder<List<Order>>(
+      stream: _firestoreService.getTodaysOrdersStream(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(child: Text("Error memuat data: ${snapshot.error}"));
+          return Center(child: Text('Error: ${snapshot.error}'));
         }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Center(child: Text("Tidak ada data tersedia."));
+        final orders = snapshot.data ?? [];
+        if (orders.isEmpty) {
+          return const Center(child: Text('Tidak ada pesanan hari ini.'));
         }
-
-        final allTodaysOrders = snapshot.data![0] as List<Order>;
-        final todaysSale = snapshot.data![1] as DailySale;
-        final dailyStock = snapshot.data![2] as DailyStock?;
-        final totalGallonsInToday = snapshot.data![3] as int;
-
-        final pendingOrders = allTodaysOrders.where((o) => o.status == OrderStatus.pending).toList();
-        final inDeliveryOrders = allTodaysOrders.where((o) => o.status == OrderStatus.inDelivery).toList();
-        final completedOrders = allTodaysOrders.where((o) => o.status == OrderStatus.delivered).toList();
-
-        return DefaultTabController(
-          length: 3,
-          child: NestedScrollView(
-            headerSliverBuilder: (context, innerBoxIsScrolled) {
-              return [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        StockInfoCard(
-                          stock: dailyStock,
-                          totalOut: todaysSale.quantity,
-                          totalIn: totalGallonsInToday,
-                          deliveryCount: todaysSale.deliveryCount,
-                          onEditPressed: () => _showSetInitialStockDialog(dailyStock?.initialStock ?? 0),
-                        ),
-                        const SizedBox(height: 16),
-                        const HomeActionButtons(),
-                        const Divider(height: 32, thickness: 1),
-                        const Text('Daftar Pesanan Hari Ini', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
-                ),
-                SliverPersistentHeader(
-                  delegate: _SliverAppBarDelegate(
-                    TabBar(
-                      tabs: [
-                        Tab(text: 'Belum Diantar (${pendingOrders.length})'),
-                        Tab(text: 'Diantar (${inDeliveryOrders.length})'),
-                        Tab(text: 'Selesai (${completedOrders.length})'),
-                      ],
-                    ),
-                  ),
-                  pinned: true,
-                ),
-              ];
-            },
-            body: TabBarView(
-              children: [
-                OrderListView(
-                  orders: pendingOrders,
-                  emptyMessage: 'Tidak ada pesanan yang perlu diantar.',
-                  onRefresh: _refreshData,
-                  onStartDelivery: _startDelivery,
-                  onCompleteDelivery: _completeDelivery,
-                  onCancelOrder: _cancelOrder,
-                ),
-                OrderListView(
-                  orders: inDeliveryOrders,
-                  emptyMessage: 'Tidak ada pesanan yang sedang diantar.',
-                  onRefresh: _refreshData,
-                  onStartDelivery: _startDelivery,
-                  onCompleteDelivery: _completeDelivery,
-                  onCancelOrder: _cancelOrder,
-                ),
-                OrderListView(
-                  orders: completedOrders,
-                  emptyMessage: 'Belum ada pesanan yang selesai hari ini.',
-                  onRefresh: _refreshData,
-                  onStartDelivery: _startDelivery,
-                  onCompleteDelivery: _completeDelivery,
-                  onCancelOrder: _cancelOrder,
-                ),
-              ],
-            ),
-          ),
+        return ListView.builder(
+          itemCount: orders.length,
+          itemBuilder: (context, i) {
+            final order = orders[i];
+            return OrderItemCard(
+              order: order,
+              onStartDelivery: () => onStartDelivery(order),
+              onCompleteDelivery: () => onCompleteDelivery(order),
+              onCancelOrder: () {}, // Implementasi jika perlu
+            );
+          },
         );
       },
     );
   }
 }
 
-// Helper class for the sticky TabBar
-class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
-  _SliverAppBarDelegate(this._tabBar);
+class OrdersLocalWidget extends StatelessWidget {
+  final List<Order> orders;
+  final void Function(Order) onStartDelivery;
+  final void Function(Order) onCompleteDelivery;
+  const OrdersLocalWidget({super.key, required this.orders, required this.onStartDelivery, required this.onCompleteDelivery});
+  @override
+  Widget build(BuildContext context) {
+    if (orders.isEmpty) {
+      return const Center(child: Text('Tidak ada pesanan lokal hari ini.'));
+    }
+    return ListView.builder(
+      itemCount: orders.length,
+      itemBuilder: (context, i) {
+        final order = orders[i];
+        return OrderItemCard(
+          order: order,
+          onStartDelivery: () => onStartDelivery(order),
+          onCompleteDelivery: () => onCompleteDelivery(order),
+          onCancelOrder: () {}, // Implementasi jika perlu
+        );
+      },
+    );
+  }
+}
 
-  final TabBar _tabBar;
+// Widget ringkasan statistik pesanan hari ini
+class _OrderSummary extends StatelessWidget {
+  final List<Order> orders;
+  final bool isOnline;
+  const _OrderSummary({required this.orders, required this.isOnline});
 
   @override
-  double get minExtent => _tabBar.preferredSize.height;
-  @override
-  double get maxExtent => _tabBar.preferredSize.height;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor, width: 1.0)),
+  Widget build(BuildContext context) {
+    final total = orders.length;
+    final delivered = orders.where((o) => o.status == OrderStatus.delivered).length;
+    final inDelivery = orders.where((o) => o.status == OrderStatus.inDelivery).length;
+    final pending = orders.where((o) => o.status == OrderStatus.pending).length;
+    final totalGallon = orders.fold<int>(0, (sum, o) => sum + (o.gallonQuantity ?? 0));
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildStat('Total Pesanan', total, Icons.list_alt),
+            _buildStat('Belum Diantar', pending, Icons.pending_actions),
+            _buildStat('Sedang Antar', inDelivery, Icons.local_shipping),
+            _buildStat('Terkirim', delivered, Icons.check_circle),
+            _buildStat('Total Galon', totalGallon, Icons.local_drink),
+          ],
+        ),
       ),
-      child: _tabBar,
     );
   }
 
+  Widget _buildStat(String label, int value, IconData icon) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 28, color: Colors.blueGrey),
+        const SizedBox(height: 4),
+        Text('$value', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(label, style: const TextStyle(fontSize: 12)),
+      ],
+    );
+  }
+}
+
+// Dialog untuk set/kustomisasi resource galon
+class _SetStockDialog extends StatefulWidget {
   @override
-  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
-    return true;
+  State<_SetStockDialog> createState() => _SetStockDialogState();
+}
+
+class _SetStockDialogState extends State<_SetStockDialog> {
+  final _stockController = TextEditingController();
+  @override
+  void dispose() {
+    _stockController.dispose();
+    super.dispose();
+  }
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Set Persediaan Galon'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _stockController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Galon Tersedia'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Batal'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.pop(context, {
+              'stock': int.tryParse(_stockController.text) ?? 0,
+            });
+          },
+          child: const Text('Simpan'),
+        ),
+      ],
+    );
   }
 }

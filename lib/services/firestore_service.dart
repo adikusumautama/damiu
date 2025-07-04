@@ -94,12 +94,12 @@ class FirestoreService {
 
         // 3. Adjust current stock (decrement)
         transaction.update(stockRef, {
-          'current_stock': FieldValue.increment(-order.gallonQuantity),
+          'current_stock': FieldValue.increment(-(order.gallonQuantity ?? 0)),
         });
 
         // 4. Record the sale (increment quantity and delivery count)
         transaction.set(saleRef,
-            {'quantity': FieldValue.increment(order.gallonQuantity), 'delivery_count': FieldValue.increment(1)}, SetOptions(merge: true));
+            {'quantity': FieldValue.increment(order.gallonQuantity ?? 0), 'delivery_count': FieldValue.increment(1)}, SetOptions(merge: true));
       });
       return null; // Success
     } catch (e) {
@@ -199,21 +199,38 @@ class FirestoreService {
   Future<String?> setInitialStock({
     required DateTime date,
     required int filledStock,
-    required int emptyStock,
     required String updatedByUid,
   }) async {
     try {
       String docId = DateFormat('yyyy-MM-dd').format(date);
       await _db.collection('daily_stock_levels').doc(docId).set({
         'initial_stock': filledStock,
+        'last_updated': Timestamp.now(),
+        'updated_by_uid': updatedByUid,
+        'current_stock': filledStock,
+      }, SetOptions(merge: true));
+      return null;
+    } catch (e) {
+      print('Error setting initial stock: $e');
+      return e.toString();
+    }
+  }
+
+  Future<String?> setInitialEmptyStock({
+    required DateTime date,
+    required int emptyStock,
+    required String updatedByUid,
+  }) async {
+    try {
+      String docId = DateFormat('yyyy-MM-dd').format(date);
+      await _db.collection('daily_stock_levels').doc(docId).set({
         'initial_empty_stock': emptyStock,
-        'current_stock': filledStock, // Langsung set stok saat ini
         'last_updated': Timestamp.now(),
         'updated_by_uid': updatedByUid,
       }, SetOptions(merge: true));
       return null;
     } catch (e) {
-      print('Error setting initial stock: $e');
+      print('Error setting initial empty stock: $e');
       return e.toString();
     }
   }

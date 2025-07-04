@@ -69,7 +69,7 @@ class SyncService {
           print('[SyncService] Memperbarui status pesanan #${order.id} di Firestore...');
           error = await _firestoreService.updateOrderStatus(
             newFirestoreId, 
-            order.status, 
+            order.status ?? '', 
             setDeliveredTime: order.status == OrderStatus.delivered
           );
         }
@@ -77,7 +77,7 @@ class SyncService {
         if (error == null && newFirestoreId != null) {
           // Jika sukses, tandai sebagai sudah sinkron di database lokal
           await _dbHelper.markOrderAsSynced(order.id!, newFirestoreId);
-          print('[SyncService] Pesanan #${order.id} untuk ${order.customerName} berhasil disinkronkan.');
+          print('[SyncService] Pesanan #${order.id} untuk ${order.customerName ?? "-"} berhasil disinkronkan.');
         } else if (error != null) {
            print('[SyncService] Gagal sinkronisasi pesanan #${order.id}: $error');
         }

@@ -405,4 +405,47 @@ class DatabaseHelper {
     final db = await database;
     return await db.delete('customers');
   }
+
+  /// Set initial stock (galon tersedia) untuk tanggal tertentu
+  Future<int> setInitialStock({
+    required DateTime date,
+    required int filledStock,
+    required String updatedByUid,
+  }) async {
+    // Ambil daily stock lama jika ada, agar initialEmptyStock tetap
+    final oldStock = await getDailyStock(date);
+    final dailyStock = DailyStock(
+      id: _formatDate(date),
+      initialStock: filledStock,
+      initialEmptyStock: oldStock?.initialEmptyStock ?? 0,
+      currentStock: 0, // Not used in local DB
+      lastUpdated: DateTime.now(),
+      updatedByUid: updatedByUid,
+    );
+    return await upsertDailyStock(dailyStock);
+  }
+
+  /// Set initial empty stock (galon kosong) untuk tanggal tertentu
+  Future<int> setInitialEmptyStock({
+    required DateTime date,
+    required int emptyStock,
+    required String updatedByUid,
+  }) async {
+    // Ambil daily stock lama jika ada, agar initialStock tetap
+    final oldStock = await getDailyStock(date);
+    final dailyStock = DailyStock(
+      id: _formatDate(date),
+      initialStock: oldStock?.initialStock ?? 0,
+      initialEmptyStock: emptyStock,
+      currentStock: 0, // Not used in local DB
+      lastUpdated: DateTime.now(),
+      updatedByUid: updatedByUid,
+    );
+    return await upsertDailyStock(dailyStock);
+  }
+
+  String _formatDate(DateTime date) {
+    // yyyy-MM-dd
+    return date.toIso8601String().split('T').first;
+  }
 }

@@ -5,29 +5,29 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class Order {
   final int? id; // Kunci utama untuk SQLite
   final String? firestoreId; // ID unik dari dokumen di Firestore
-  final String customerName;
-  final int gallonQuantity;
+  final String? customerName;
+  final int? gallonQuantity;
   final String? otherItems;
   final String? address;
   final String? phoneNumber;
-  final String status;
-  final DateTime createdAt;
+  final String? status;
+  final DateTime? createdAt;
   final DateTime? deliveredAt;
-  final String employeeUid;
+  final String? employeeUid;
   final bool isSynced; // Penanda untuk sinkronisasi
 
   Order({
     this.id,
     this.firestoreId,
-    required this.customerName,
-    required this.gallonQuantity,
+    this.customerName,
+    this.gallonQuantity,
     this.otherItems,
     this.address,
     this.phoneNumber,
-    required this.status,
-    required this.createdAt,
+    this.status,
+    this.createdAt,
     this.deliveredAt,
-    required this.employeeUid,
+    this.employeeUid,
     this.isSynced = false, // Defaultnya adalah false (belum sinkron)
   });
 
@@ -42,7 +42,7 @@ class Order {
       'address': address,
       'phone_number': phoneNumber,
       'status': status,
-      'created_at': createdAt.toIso8601String(),
+      'created_at': createdAt?.toIso8601String(),
       'delivered_at': deliveredAt?.toIso8601String(),
       'employee_uid': employeeUid,
       'is_synced': isSynced ? 1 : 0, // Simpan sebagai integer (0 atau 1)
@@ -54,17 +54,17 @@ class Order {
     return Order(
       id: map['id'] as int?,
       firestoreId: map['firestore_id'] as String?,
-      customerName: map['customer_name'] as String,
-      gallonQuantity: map['gallon_quantity'] as int,
+      customerName: map['customer_name'] as String?,
+      gallonQuantity: map['gallon_quantity'] as int?,
       otherItems: map['other_items'] as String?,
       address: map['address'] as String?,
       phoneNumber: map['phone_number'] as String?,
-      status: map['status'] as String,
-      createdAt: DateTime.parse(map['created_at'] as String),
+      status: map['status'] as String?,
+      createdAt: map['created_at'] != null ? DateTime.parse(map['created_at'] as String) : null,
       deliveredAt: map['delivered_at'] != null
           ? DateTime.parse(map['delivered_at'] as String)
           : null,
-      employeeUid: map['employee_uid'] as String,
+      employeeUid: map['employee_uid'] as String?,
       isSynced: (map['is_synced'] as int? ?? 0) == 1, // Baca dari integer
     );
   }
@@ -72,16 +72,15 @@ class Order {
   // Konversi ke Map untuk Firestore
   Map<String, dynamic> toMapForFirestore() {
     return {
-      'customerName': customerName,
-      'gallonQuantity': gallonQuantity,
+      'customerName': customerName ?? '-',
+      'gallonQuantity': gallonQuantity ?? 0,
       'otherItems': otherItems,
       'address': address,
       'phoneNumber': phoneNumber,
-      'status': status,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'deliveredAt':
-          deliveredAt != null ? Timestamp.fromDate(deliveredAt!) : null,
-      'employeeUid': employeeUid,
+      'status': status ?? '-',
+      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
+      'deliveredAt': deliveredAt != null ? Timestamp.fromDate(deliveredAt!) : null,
+      'employeeUid': employeeUid ?? '-',
     };
   }
 
@@ -89,17 +88,17 @@ class Order {
   factory Order.fromFirestore(Map<String, dynamic> data, String documentId) {
     return Order(
       firestoreId: documentId,
-      customerName: data['customerName'] as String,
-      gallonQuantity: data['gallonQuantity'] as int,
-      otherItems: data['otherItems'] as String?,
-      address: data['address'] as String?,
-      phoneNumber: data['phoneNumber'] as String?,
-      status: data['status'] as String,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      customerName: data['customerName'],
+      gallonQuantity: data['gallonQuantity'],
+      otherItems: data['otherItems'],
+      address: data['address'],
+      phoneNumber: data['phoneNumber'],
+      status: data['status'],
+      createdAt: data['createdAt'] != null ? (data['createdAt'] as Timestamp).toDate() : null,
       deliveredAt: data['deliveredAt'] != null
           ? (data['deliveredAt'] as Timestamp).toDate()
           : null,
-      employeeUid: data['employeeUid'] as String,
+      employeeUid: data['employeeUid'],
       isSynced: true, // Data dari Firestore selalu dianggap sudah sinkron
     );
   }
