@@ -16,8 +16,13 @@ import 'package:damiu/services/sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'widgets/add_order_dialog.dart';
-import 'widgets/order_item_card.dart';
+import 'widgets/order_summary.dart';
+import 'widgets/orders_list.dart';
+import 'widgets/set_stock_dialog.dart';
 import 'widgets/resource_board.dart';
+import 'widgets/profile_section.dart';
+import 'widgets/customer_book.dart';
+import '../../main.dart' show resetDailyStockIfNeeded;
 
 class KaryawanHomeScreen extends StatefulWidget {
   const KaryawanHomeScreen({super.key});
@@ -37,15 +42,16 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
   List<Order> _localOrders = [];
   DateTime? _customDateTime; // Tambahan: tanggal/waktu custom
 
-  // Getter untuk tanggal & waktu aktif (custom jika ada, else DateTime.now())
-  DateTime get _activeDateTime => _customDateTime ?? DateTime.now();
-
   @override
   void initState() {
     super.initState();
     _initConnectivity();
     _loadCurrentUser();
     _loadLocalOrders();
+    // Reset stok harian otomatis saat screen diinisialisasi
+    Future.microtask(() async {
+      await resetDailyStockIfNeeded(isOnline: _isOnline, employeeUid: _currentUser?.uid);
+    });
   }
 
   @override
@@ -128,10 +134,10 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
             stream: _firestoreService.getTodaysOrdersStream(),
             builder: (context, snapshot) {
               final orders = snapshot.data ?? [];
-              return _OrderSummary(orders: orders, isOnline: _isOnline);
+              return OrderSummary(orders: orders, isOnline: _isOnline);
             },
           )
-        : _OrderSummary(orders: _localOrders, isOnline: _isOnline);
+        : OrderSummary(orders: _localOrders, isOnline: _isOnline);
 
     final List<Widget> _pages = [
       Column(
@@ -150,7 +156,7 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
             onSetStock: () async {
               final result = await showDialog<Map<String, int>>(
                 context: context,
-                builder: (ctx) => _SetStockDialog(),
+                builder: (ctx) => const SetStockDialog(),
               );
               if (result != null) {
                 if (_isOnline) {
@@ -180,9 +186,7 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
                           await _firestoreService.updateOrderStatus(order.firestoreId!, OrderStatus.inDelivery);
                         },
                         onCompleteDelivery: (order) async {
-                          // ONLINE: Kurangi stok galon via transaksi
                           await _firestoreService.completeOrderTransaction(order);
-                          // Update daily_sales Firestore (sudah dilakukan di transaksi, tapi pastikan juga di sini jika perlu)
                           await _firestoreService.recordSale(
                             order.gallonQuantity ?? 0,
                             1,
@@ -197,7 +201,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
                         },
                         onCompleteDelivery: (order) async {
                           await _dbHelper.updateOrderStatus(order.id!, OrderStatus.delivered, setDeliveredTime: true);
-                          // OFFLINE: Kurangi stok galon tersedia
                           final stock = await _dbHelper.getDailyStock(DateTime.now());
                           final newStock = (stock?.initialStock ?? 0) - (order.gallonQuantity ?? 0);
                           await _dbHelper.setInitialStock(
@@ -205,7 +208,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
                             filledStock: newStock < 0 ? 0 : newStock,
                             updatedByUid: _currentUser?.uid ?? '-',
                           );
-                          // Update daily_sales lokal
                           final today = DateTime.now();
                           final oldSale = await _dbHelper.getDailySaleByDate(today);
                           final newQty = (oldSale?.quantity ?? 0) + (order.gallonQuantity ?? 0);
@@ -268,8 +270,16 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
           ),
         ],
       ),
-      const Center(child: Text('Buku Pelanggan')), // Ganti dengan widget pelanggan
-      const Center(child: Text('Profil Saya')), // Ganti dengan widget profil
+      CustomerBook(isOnline: _isOnline),
+      ProfileSection(
+        user: _currentUser,
+        onLogout: () async {
+          await _authService.signOut();
+          if (mounted) {
+            Navigator.of(context).pushReplacementNamed('/login');
+          }
+        },
+      ),
     ];
     return Scaffold(
       appBar: AppBar(
@@ -332,160 +342,132 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
                   Navigator.pop(context);
                 },
               ),
+            ListTile(
+              leading: const Icon(Icons.storage),
+              title: const Text('Data Lokal'),
+              subtitle: const Text('Lihat data log, stok, dan pelanggan yang tersimpan di perangkat.'),
+              onTap: () async {
+                final db = DatabaseHelper();
+                List logs = await db.getAllDeliveryLogs();
+                List stocks = await db.getAllLocalStocks();
+                List customers = await db.getAllCustomers();
+                if (!mounted) return;
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (ctx) => StatefulBuilder(
+                    builder: (ctx, setModalState) => Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Log Pengantaran', style: Theme.of(context).textTheme.titleMedium),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_forever, color: Colors.red),
+                                  tooltip: 'Hapus Semua Log',
+                                  onPressed: () async {
+                                    await db.deleteAllDeliveryLogs();
+                                    logs = await db.getAllDeliveryLogs();
+                                    setModalState(() {});
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Semua log dihapus.')));
+                                  },
+                                ),
+                              ],
+                            ),
+                            ...logs.map((e) => ListTile(
+                              dense: true,
+                              title: Text('Tanggal: ${DateFormat('dd-MM-yyyy HH:mm').format(e.timestamp)}'),
+                              subtitle: Text('Karyawan: ${e.employeeUid}\nGalon: ${e.gallons}\nStatus: ${e.isNoDeliveryMarker ? 'Tidak Ada Pengantaran' : 'Terkirim'}'),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                tooltip: 'Hapus Log Ini',
+                                onPressed: () async {
+                                  await db.deleteDeliveryLog(e.id!);
+                                  logs = await db.getAllDeliveryLogs();
+                                  setModalState(() {});
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Log dihapus.')));
+                                },
+                              ),
+                            )),
+                            const Divider(),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Stok Awal', style: Theme.of(context).textTheme.titleMedium),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_forever, color: Colors.red),
+                                  tooltip: 'Hapus Semua Stok',
+                                  onPressed: () async {
+                                    await db.deleteAllDailyStocks();
+                                    stocks = await db.getAllLocalStocks();
+                                    setModalState(() {});
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Semua stok dihapus.')));
+                                  },
+                                ),
+                              ],
+                            ),
+                            ...stocks.map((e) => ListTile(
+                              dense: true,
+                              title: Text('Tanggal: ${e.id}'),
+                              subtitle: Text('Stok Awal: ${e.initialStock}\nStok Kosong: ${e.initialEmptyStock}\nKaryawan: ${e.updatedByUid}\nUpdate: ${DateFormat('dd-MM-yyyy HH:mm').format(e.lastUpdated)}'),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                tooltip: 'Hapus Stok Ini',
+                                onPressed: () async {
+                                  await db.deleteDailyStock(e.id);
+                                  stocks = await db.getAllLocalStocks();
+                                  setModalState(() {});
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stok dihapus.')));
+                                },
+                              ),
+                            )),
+                            const Divider(),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Pelanggan', style: Theme.of(context).textTheme.titleMedium),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_forever, color: Colors.red),
+                                  tooltip: 'Hapus Semua Pelanggan',
+                                  onPressed: () async {
+                                    await db.deleteAllCustomers();
+                                    customers = await db.getAllCustomers();
+                                    setModalState(() {});
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Semua pelanggan dihapus.')));
+                                  },
+                                ),
+                              ],
+                            ),
+                            ...customers.map((e) => ListTile(
+                              dense: true,
+                              title: Text('Nama: ${e.name}'),
+                              subtitle: Text('Alamat: ${e.address ?? '-'}\nNo. HP: ${e.phoneNumber ?? '-'}'),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                tooltip: 'Hapus Pelanggan Ini',
+                                onPressed: () async {
+                                  await db.deleteCustomer(e.id);
+                                  customers = await db.getAllCustomers();
+                                  setModalState(() {});
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pelanggan dihapus.')));
+                                },
+                              ),
+                            )),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),
-    );
-  }
-} // Penutup class _KaryawanHomeScreenState
-
-class OrdersStreamWidget extends StatelessWidget {
-  final void Function(Order) onStartDelivery;
-  final void Function(Order) onCompleteDelivery;
-  OrdersStreamWidget({super.key, required this.onStartDelivery, required this.onCompleteDelivery});
-  final FirestoreService _firestoreService = FirestoreService();
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<List<Order>>(
-      stream: _firestoreService.getTodaysOrdersStream(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-        final orders = snapshot.data ?? [];
-        if (orders.isEmpty) {
-          return const Center(child: Text('Tidak ada pesanan hari ini.'));
-        }
-        return ListView.builder(
-          itemCount: orders.length,
-          itemBuilder: (context, i) {
-            final order = orders[i];
-            return OrderItemCard(
-              order: order,
-              onStartDelivery: () => onStartDelivery(order),
-              onCompleteDelivery: () => onCompleteDelivery(order),
-              onCancelOrder: () {}, // Implementasi jika perlu
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class OrdersLocalWidget extends StatelessWidget {
-  final List<Order> orders;
-  final void Function(Order) onStartDelivery;
-  final void Function(Order) onCompleteDelivery;
-  const OrdersLocalWidget({super.key, required this.orders, required this.onStartDelivery, required this.onCompleteDelivery});
-  @override
-  Widget build(BuildContext context) {
-    if (orders.isEmpty) {
-      return const Center(child: Text('Tidak ada pesanan lokal hari ini.'));
-    }
-    return ListView.builder(
-      itemCount: orders.length,
-      itemBuilder: (context, i) {
-        final order = orders[i];
-        return OrderItemCard(
-          order: order,
-          onStartDelivery: () => onStartDelivery(order),
-          onCompleteDelivery: () => onCompleteDelivery(order),
-          onCancelOrder: () {}, // Implementasi jika perlu
-        );
-      },
-    );
-  }
-}
-
-// Widget ringkasan statistik pesanan hari ini
-class _OrderSummary extends StatelessWidget {
-  final List<Order> orders;
-  final bool isOnline;
-  const _OrderSummary({required this.orders, required this.isOnline});
-
-  @override
-  Widget build(BuildContext context) {
-    final total = orders.length;
-    final delivered = orders.where((o) => o.status == OrderStatus.delivered).length;
-    final inDelivery = orders.where((o) => o.status == OrderStatus.inDelivery).length;
-    final pending = orders.where((o) => o.status == OrderStatus.pending).length;
-    final totalGallon = orders.fold<int>(0, (sum, o) => sum + (o.gallonQuantity ?? 0));
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildStat('Total Pesanan', total, Icons.list_alt),
-            _buildStat('Belum Diantar', pending, Icons.pending_actions),
-            _buildStat('Sedang Antar', inDelivery, Icons.local_shipping),
-            _buildStat('Terkirim', delivered, Icons.check_circle),
-            _buildStat('Total Galon', totalGallon, Icons.local_drink),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStat(String label, int value, IconData icon) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 28, color: Colors.blueGrey),
-        const SizedBox(height: 4),
-        Text('$value', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        Text(label, style: const TextStyle(fontSize: 12)),
-      ],
-    );
-  }
-}
-
-// Dialog untuk set/kustomisasi resource galon
-class _SetStockDialog extends StatefulWidget {
-  @override
-  State<_SetStockDialog> createState() => _SetStockDialogState();
-}
-
-class _SetStockDialogState extends State<_SetStockDialog> {
-  final _stockController = TextEditingController();
-  @override
-  void dispose() {
-    _stockController.dispose();
-    super.dispose();
-  }
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Set Persediaan Galon'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _stockController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Galon Tersedia'),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Batal'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.pop(context, {
-              'stock': int.tryParse(_stockController.text) ?? 0,
-            });
-          },
-          child: const Text('Simpan'),
-        ),
-      ],
     );
   }
 }

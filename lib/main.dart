@@ -5,10 +5,13 @@ import 'package:damiu/screens/home/admin_home_screen.dart';
 import 'package:damiu/screens/home/karyawan_home_screen.dart';
 import 'package:damiu/screens/home/pelanggan_home_screen.dart';
 import 'package:damiu/services/auth_service.dart';
+import 'package:damiu/services/firestore_service.dart';
+import 'package:damiu/services/database_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/date_symbol_data_local.dart'; // Impor untuk initializeDateFormatting
+import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart'; // Pastikan file ini ada setelah flutterfire configure
 
 // Consider defining roles as constants or an enum
@@ -107,6 +110,29 @@ class AuthWrapper extends StatelessWidget {
       },
     );
   }
+}
+
+Future<void> resetDailyStockIfNeeded(
+    {required bool isOnline, required String? employeeUid}) async {
+  final prefs = await SharedPreferences.getInstance();
+  final today = DateTime.now();
+  final todayStr = today.toIso8601String().split('T').first;
+  final lastReset = prefs.getString('last_stock_reset_date');
+  if (lastReset == todayStr) return; // Sudah reset hari ini
+
+  // Reset stok harian (currentStock, initialStock, initialEmptyStock ke 0)
+  if (isOnline) {
+    await FirestoreService()
+        .setInitialStock(date: today, filledStock: 0, updatedByUid: employeeUid ?? '-');
+    await FirestoreService()
+        .setInitialEmptyStock(date: today, emptyStock: 0, updatedByUid: employeeUid ?? '-');
+  } else {
+    await DatabaseHelper()
+        .setInitialStock(date: today, filledStock: 0, updatedByUid: employeeUid ?? '-');
+    await DatabaseHelper()
+        .setInitialEmptyStock(date: today, emptyStock: 0, updatedByUid: employeeUid ?? '-');
+  }
+  await prefs.setString('last_stock_reset_date', todayStr);
 }
 
 void main() async {

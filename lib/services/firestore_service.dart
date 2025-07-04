@@ -169,6 +169,18 @@ class FirestoreService {
     });
   }
   
+  /// Ambil semua pelanggan dari Firestore (sekali, bukan stream)
+  Future<List<Customer>> getAllCustomersOnce() async {
+    final snapshot = await _db.collection('customers').get();
+    return snapshot.docs.map((doc) => Customer.fromFirestore(doc.data(), doc.id)).toList();
+  }
+
+  /// Ambil semua pesanan dari Firestore (sekali, bukan stream)
+  Future<List<Order>> getAllOrdersOnce() async {
+    final snapshot = await _db.collection('orders').get();
+    return snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList();
+  }
+
   // --- Operasi untuk Stok (Stock) ---
   
   // --- FUNGSI BARU ---
@@ -445,5 +457,19 @@ class FirestoreService {
       print('Error deleting all daily sync metadata: $e');
       return e.toString();
     }
+  }
+
+  /// Stream semua pesanan (real-time)
+  Stream<List<Order>> getOrdersStream() {
+    return _db.collection('orders').snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList();
+    });
+  }
+
+  /// Stream semua stok harian (real-time)
+  Stream<List<DailyStock>> getStocksStream() {
+    return _db.collection('daily_stock_levels').snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) => DailyStock.fromFirestore(doc)).toList();
+    });
   }
 }

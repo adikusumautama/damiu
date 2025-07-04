@@ -348,6 +348,22 @@ class DatabaseHelper {
     );
   }
 
+  /// Upsert pesanan ke database lokal (insert jika baru, update jika sudah ada)
+  Future<void> upsertOrder(Order order) async {
+    final db = await database;
+    // Cek apakah order dengan firestoreId sudah ada
+    final List<Map<String, dynamic>> maps = await db.query(
+      'orders',
+      where: 'firestore_id = ?',
+      whereArgs: [order.firestoreId],
+    );
+    if (maps.isEmpty) {
+      await db.insert('orders', order.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    } else {
+      await db.update('orders', order.toMap(), where: 'firestore_id = ?', whereArgs: [order.firestoreId]);
+    }
+  }
+
   // --- Operasi untuk Customer ---
   Future<int> upsertCustomer(Customer customer) async {
     final db = await database;

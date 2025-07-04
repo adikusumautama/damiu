@@ -106,6 +106,49 @@ class _ResourceBoardState extends State<ResourceBoard> {
                       }
                     },
                   ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline, size: 20, color: Colors.blue),
+                    tooltip: 'Tambah Galon Kosong',
+                    onPressed: () async {
+                      final result = await showDialog<int>(
+                        context: context,
+                        builder: (ctx) => _AddEmptyStockDialog(),
+                      );
+                      if (result != null && result > 0) {
+                        if (widget.isOnline) {
+                          // Tambah galon kosong dan galon tersedia
+                          final stock = await FirestoreService().getDailyStockStream(DateTime.now()).first;
+                          final newEmpty = (stock?.initialEmptyStock ?? 0) + result;
+                          final newFilled = (stock?.currentStock ?? 0) + result;
+                          await FirestoreService().setInitialEmptyStock(
+                            date: DateTime.now(),
+                            emptyStock: newEmpty,
+                            updatedByUid: widget.employeeUid ?? '-',
+                          );
+                          await FirestoreService().setInitialStock(
+                            date: DateTime.now(),
+                            filledStock: newFilled,
+                            updatedByUid: widget.employeeUid ?? '-',
+                          );
+                        } else {
+                          final stock = await DatabaseHelper().getDailyStock(DateTime.now());
+                          final newEmpty = (stock?.initialEmptyStock ?? 0) + result;
+                          final newFilled = (stock?.currentStock ?? 0) + result;
+                          await DatabaseHelper().setInitialEmptyStock(
+                            date: DateTime.now(),
+                            emptyStock: newEmpty,
+                            updatedByUid: widget.employeeUid ?? '-',
+                          );
+                          await DatabaseHelper().setInitialStock(
+                            date: DateTime.now(),
+                            filledStock: newFilled,
+                            updatedByUid: widget.employeeUid ?? '-',
+                          );
+                        }
+                        if (mounted) setState(() {});
+                      }
+                    },
+                  ),
                 ],
               ),
       ),
@@ -161,6 +204,51 @@ class _SetEmptyStockDialogState extends State<_SetEmptyStockDialog> {
             Navigator.pop(context, int.tryParse(_emptyStockController.text) ?? 0);
           },
           child: const Text('Simpan'),
+        ),
+      ],
+    );
+  }
+}
+
+// Tambahkan dialog baru untuk tambah galon kosong
+class _AddEmptyStockDialog extends StatefulWidget {
+  const _AddEmptyStockDialog({Key? key}) : super(key: key);
+
+  @override
+  State<_AddEmptyStockDialog> createState() => _AddEmptyStockDialogState();
+}
+
+class _AddEmptyStockDialogState extends State<_AddEmptyStockDialog> {
+  final _addEmptyStockController = TextEditingController();
+  @override
+  void dispose() {
+    _addEmptyStockController.dispose();
+    super.dispose();
+  }
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Tambah Galon Kosong'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _addEmptyStockController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Jumlah Galon Kosong'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Batal'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.pop(context, int.tryParse(_addEmptyStockController.text) ?? 0);
+          },
+          child: const Text('Tambah'),
         ),
       ],
     );

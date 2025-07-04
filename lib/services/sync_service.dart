@@ -1,5 +1,6 @@
 // lib/services/sync_service.dart
 
+import 'dart:async';
 import 'package:damiu/models/customer_model.dart';
 import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/models/order_model.dart';
@@ -9,15 +10,6 @@ import 'package:damiu/services/firestore_service.dart';
 class SyncService {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final FirestoreService _firestoreService = FirestoreService();
-
-  /// FUNGSI UTAMA: Menjalankan semua tugas sinkronisasi yang tertunda.
-  Future<void> syncAllData() async {
-    print('=== MEMULAI SINKRONISASI SEMUA DATA ===');
-    await syncCustomers();
-    await syncOrders();
-    // Jika ada data lain yang perlu disinkronkan di masa depan, tambahkan di sini.
-    print('=== SINKRONISASI SEMUA DATA SELESAI ===');
-  }
 
   /// Mengirim data pelanggan baru ke Firestore.
   Future<void> syncCustomers() async {
@@ -86,6 +78,63 @@ class SyncService {
       }
     }
     print('[SyncService] Sinkronisasi pesanan selesai.');
+  }
+  
+  /// Menarik data pelanggan terbaru dari Firestore ke database lokal
+  Future<void> pullCustomersFromFirestore() async {
+    print('[SyncService] Menarik data pelanggan dari Firestore ke lokal...');
+    final customers = await _firestoreService.getAllCustomersOnce();
+    for (final customer in customers) {
+      await _dbHelper.upsertCustomer(customer);
+    }
+    print('[SyncService] Sinkronisasi pull pelanggan selesai.');
+  }
+
+  /// Menarik data pesanan terbaru dari Firestore ke database lokal
+  Future<void> pullOrdersFromFirestore() async {
+    print('[SyncService] Menarik data pesanan dari Firestore ke lokal...');
+    final orders = await _firestoreService.getAllOrdersOnce();
+    for (final order in orders) {
+      await _dbHelper.upsertOrder(order);
+    }
+    print('[SyncService] Sinkronisasi pull pesanan selesai.');
+  }
+
+  /// Listener real-time pelanggan Firestore ke lokal (panggil saat online)
+  StreamSubscription listenCustomersRealtimeToLocal() {
+    return _firestoreService.getCustomersStream().listen((customers) async {
+      for (final customer in customers) {
+        await _dbHelper.upsertCustomer(customer);
+      }
+    });
+  }
+
+  /// Listener real-time pesanan Firestore ke lokal (panggil saat online)
+  StreamSubscription listenOrdersRealtimeToLocal() {
+    return _firestoreService.getOrdersStream().listen((orders) async {
+      for (final order in orders) {
+        await _dbHelper.upsertOrder(order);
+      }
+    });
+  }
+
+  /// Listener real-time stok Firestore ke lokal (panggil saat online)
+  StreamSubscription listenStocksRealtimeToLocal() {
+    return _firestoreService.getStocksStream().listen((stocks) async {
+      for (final stock in stocks) {
+        await _dbHelper.upsertDailyStock(stock);
+      }
+    });
+  }
+
+  /// Sinkronisasi dua arah: push lokal ke Firestore, lalu pull Firestore ke lokal
+  Future<void> syncAllData() async {
+    print('=== MEMULAI SINKRONISASI SEMUA DATA (TWO-WAY) ===');
+    await syncCustomers();
+    await syncOrders();
+    await pullCustomersFromFirestore();
+    await pullOrdersFromFirestore();
+    print('=== SINKRONISASI SEMUA DATA SELESAI ===');
   }
   
   // Fungsi syncAllUnsummarizedDeliveryLogs mungkin tidak relevan lagi jika penjualan dicatat
