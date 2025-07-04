@@ -7,7 +7,8 @@ class ResourceBoard extends StatefulWidget {
   final bool isOnline;
   final String? employeeUid;
   final VoidCallback? onSetStock;
-  const ResourceBoard({super.key, required this.isOnline, required this.employeeUid, this.onSetStock});
+  final DateTime? date;
+  const ResourceBoard({super.key, required this.isOnline, required this.employeeUid, this.onSetStock, this.date});
 
   @override
   State<ResourceBoard> createState() => _ResourceBoardState();
@@ -26,8 +27,9 @@ class _ResourceBoardState extends State<ResourceBoard> {
 
   Future<void> _loadStock() async {
     setState(() => _loading = true);
+    final stockDate = widget.date ?? DateTime.now();
     if (widget.isOnline) {
-      final stream = FirestoreService().getDailyStockStream(DateTime.now());
+      final stream = FirestoreService().getDailyStockStream(stockDate);
       stream.listen((stock) {
         setState(() {
           _stock = stock?.currentStock;
@@ -37,7 +39,7 @@ class _ResourceBoardState extends State<ResourceBoard> {
       });
     } else {
       final db = DatabaseHelper();
-      final stock = await db.getDailyStock(DateTime.now());
+      final stock = await db.getDailyStock(stockDate);
       setState(() {
         _stock = stock?.currentStock;
         _emptyStock = stock?.initialEmptyStock;

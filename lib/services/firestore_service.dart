@@ -13,8 +13,8 @@ class FirestoreService {
 
   // --- Operasi untuk Pesanan (Order) ---
 
-  Stream<List<Order>> getTodaysOrdersStream() {
-    final now = DateTime.now();
+  Stream<List<Order>> getTodaysOrdersStream({DateTime? date}) {
+    final now = date ?? DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
 
@@ -265,14 +265,14 @@ class FirestoreService {
 
   // --- Operasi untuk Penjualan Harian (Daily Sale) ---
 
-  Future<String?> recordSale(int quantity, int deliveryCount) async {
-    final docId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+  Future<String?> recordSale(int quantity, int deliveryCount, {required DateTime date}) async {
+    final docId = DateFormat('yyyy-MM-dd').format(date);
     final docRef = _db.collection('daily_sales').doc(docId);
 
     try {
       await docRef.set({
-        'date': Timestamp.now(),
-        'day_of_week': DateTime.now().weekday,
+        'date': Timestamp.fromDate(date),
+        'day_of_week': date.weekday,
         'quantity': FieldValue.increment(quantity),
         'delivery_count': FieldValue.increment(deliveryCount),
       }, SetOptions(merge: true));
@@ -470,6 +470,23 @@ class FirestoreService {
   Stream<List<DailyStock>> getStocksStream() {
     return _db.collection('daily_stock_levels').snapshots().map((snapshot) {
       return snapshot.docs.map((doc) => DailyStock.fromFirestore(doc)).toList();
+    });
+  }
+
+  Stream<DailySale?> getDailySaleStreamByDate(DateTime date) {
+    final docId = DateFormat('yyyy-MM-dd').format(date);
+    return _db.collection('daily_sales').doc(docId).snapshots().map((snapshot) {
+      if (!snapshot.exists || snapshot.data() == null) return null;
+      final data = snapshot.data()!;
+      return DailySale(
+        date: (data['date'] as Timestamp).toDate(),
+        dayOfWeek: data['day_of_week'] ?? 1,
+        deliveryCount: data['delivery_count'] ?? 0,
+        quantity: data['quantity'] ?? 0,
+        isSynced: true,
+        employeeUid: data['employee_uid'],
+        firestoreId: snapshot.id,
+      );
     });
   }
 }

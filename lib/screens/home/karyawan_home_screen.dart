@@ -42,6 +42,8 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
   List<Order> _localOrders = [];
   DateTime? _customDateTime; // Tambahan: tanggal/waktu custom
 
+  DateTime get _activeDate => _customDateTime ?? DateTime.now();
+
   @override
   void initState() {
     super.initState();
@@ -129,9 +131,10 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final activeDate = _activeDate;
     Widget summaryWidget = _isOnline
         ? StreamBuilder<List<Order>>(
-            stream: _firestoreService.getTodaysOrdersStream(),
+            stream: _firestoreService.getTodaysOrdersStream(date: activeDate),
             builder: (context, snapshot) {
               final orders = snapshot.data ?? [];
               return OrderSummary(orders: orders, isOnline: _isOnline);
@@ -153,6 +156,7 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
           ResourceBoard(
             isOnline: _isOnline,
             employeeUid: _currentUser?.uid,
+            date: activeDate,
             onSetStock: () async {
               final result = await showDialog<Map<String, int>>(
                 context: context,
@@ -190,6 +194,7 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
                           await _firestoreService.recordSale(
                             order.gallonQuantity ?? 0,
                             1,
+                            date: _activeDate,
                           );
                         },
                       )

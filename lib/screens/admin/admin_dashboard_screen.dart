@@ -20,13 +20,15 @@ class BerandaAdminContent extends StatefulWidget {
 
 class _BerandaAdminContentState extends State<BerandaAdminContent> {
   final FirestoreService _firestoreService = FirestoreService();
-  final DateTime _today =
-      DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+  final DateTime _today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+  DateTime? _customDateTime;
+  DateTime get _activeDate => _customDateTime ?? _today;
 
   @override
   Widget build(BuildContext context) {
+    final activeDate = _activeDate;
     return StreamBuilder<List<Order>>(
-      stream: _firestoreService.getTodaysOrdersStream(),
+      stream: _firestoreService.getTodaysOrdersStream(date: activeDate),
       builder: (context, orderSnapshot) {
         if (orderSnapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -48,9 +50,9 @@ class _BerandaAdminContentState extends State<BerandaAdminContent> {
             final List<DailySale> allSalesData = snapshot.data ?? [];
             allSalesData.sort((a, b) => a.date.compareTo(b.date));
             final todaySales = allSalesData.where((sale) {
-              return sale.date.year == _today.year &&
-                  sale.date.month == _today.month &&
-                  sale.date.day == _today.day;
+              return sale.date.year == activeDate.year &&
+                  sale.date.month == activeDate.month &&
+                  sale.date.day == activeDate.day;
             }).toList();
             return SingleChildScrollView(
               child: Padding(
@@ -58,6 +60,35 @@ class _BerandaAdminContentState extends State<BerandaAdminContent> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // --- Pilih tanggal manual ---
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(
+                          icon: const Icon(Icons.calendar_today),
+                          label: Text(_customDateTime == null
+                              ? 'Tanggal: Hari Ini'
+                              : 'Tanggal: \\${activeDate.day}-\\${activeDate.month}-\\${activeDate.year}'),
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: activeDate,
+                              firstDate: DateTime(activeDate.year - 1),
+                              lastDate: DateTime(activeDate.year + 2),
+                            );
+                            if (picked != null) {
+                              setState(() => _customDateTime = picked);
+                            }
+                          },
+                        ),
+                        if (_customDateTime != null)
+                          IconButton(
+                            icon: const Icon(Icons.refresh),
+                            tooltip: 'Reset ke Hari Ini',
+                            onPressed: () => setState(() => _customDateTime = null),
+                          ),
+                      ],
+                    ),
                     // --- Statistik Pesanan ---
                     OrderSummary(orders: orders, isOnline: true),
                     const SizedBox(height: 8),
@@ -148,7 +179,7 @@ class _BerandaAdminContentState extends State<BerandaAdminContent> {
                                 fontSize: 18, fontWeight: FontWeight.bold))),
                     const SizedBox(height: 8),
                     StreamBuilder<DailyStock?>(
-                      stream: _firestoreService.getDailyStockStream(_today),
+                      stream: _firestoreService.getDailyStockStream(activeDate),
                       builder: (context, stockSnapshot) {
                         if (stockSnapshot.connectionState ==
                             ConnectionState.waiting) {
