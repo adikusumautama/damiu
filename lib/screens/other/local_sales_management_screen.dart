@@ -16,10 +16,11 @@ class LocalSalesManagementWidget extends StatefulWidget {
       _LocalSalesManagementWidgetState();
 }
 
-class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget> {
+class _LocalSalesManagementWidgetState
+    extends State<LocalSalesManagementWidget> {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final AuthService _authService = AuthService();
-  
+
   List<DeliveryLogItem> _localDeliveryLogs = [];
   List<DailyStock> _localStockData = [];
   List<Customer> _localCustomers = [];
@@ -29,7 +30,6 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
   int _totalLogs = 0;
   int _totalGallonsInLogs = 0;
 
-
   @override
   void initState() {
     super.initState();
@@ -37,14 +37,18 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
   }
 
   Future<void> _refreshAllData() async {
-    setState(() { _isLoading = true; });
+    setState(() {
+      _isLoading = true;
+    });
     await Future.wait([
       _loadLocalDeliveryLogs(),
       _loadLocalStockData(),
       _loadLocalCustomers(),
     ]);
-    if(mounted) {
-      setState(() { _isLoading = false; });
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -61,17 +65,17 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
       }
       if (!_employeeNames.containsKey(log.employeeUid)) {
         final employeeName = await _getEmployeeName(log.employeeUid);
-        if(mounted) {
-           _employeeNames[log.employeeUid] = employeeName;
+        if (mounted) {
+          _employeeNames[log.employeeUid] = employeeName;
         }
       }
     }
     if (mounted) {
-        setState(() {
+      setState(() {
         _localDeliveryLogs = logs;
         _totalLogs = actualLogsCount;
         _totalGallonsInLogs = totalGallons;
-        });
+      });
     }
   }
 
@@ -86,7 +90,8 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Gagal memuat data stok lokal: $e')));
+          SnackBar(content: Text('Gagal memuat data stok lokal: $e')),
+        );
       }
     }
   }
@@ -102,7 +107,8 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Gagal memuat data pelanggan: $e')));
+          SnackBar(content: Text('Gagal memuat data pelanggan: $e')),
+        );
       }
     }
   }
@@ -113,12 +119,14 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
   }
 
   Future<void> _deleteAllLogs() async {
-    final bool confirm = await showDialog(
+    final bool confirm =
+        await showDialog(
           context: context,
           builder: (BuildContext ctx) => AlertDialog(
             title: const Text('Konfirmasi Hapus Semua Log'),
             content: const Text(
-                'Anda yakin ingin menghapus SEMUA log pengantaran lokal?'),
+              'Anda yakin ingin menghapus SEMUA log pengantaran lokal?',
+            ),
             actions: <Widget>[
               TextButton(
                 child: const Text('Batal'),
@@ -131,7 +139,8 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
               ),
             ],
           ),
-        ) ?? false;
+        ) ??
+        false;
 
     if (confirm) {
       await _dbHelper.deleteAllDeliveryLogs();
@@ -150,17 +159,28 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
   }
 
   Future<void> _deleteAllStocks() async {
-     final bool confirm = await showDialog(
-      context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        title: const Text('Konfirmasi Hapus Semua Stok'),
-        content: const Text('Anda yakin ingin menghapus SEMUA data stok awal lokal?'),
-        actions: <Widget>[
-          TextButton(child: const Text('Batal'), onPressed: () => Navigator.of(ctx).pop(false)),
-          TextButton(style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text('Hapus Semua'), onPressed: () => Navigator.of(ctx).pop(true)),
-        ],
-      ),
-    ) ?? false;
+    final bool confirm =
+        await showDialog(
+          context: context,
+          builder: (BuildContext ctx) => AlertDialog(
+            title: const Text('Konfirmasi Hapus Semua Stok'),
+            content: const Text(
+              'Anda yakin ingin menghapus SEMUA data stok awal lokal?',
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: const Text('Batal'),
+                onPressed: () => Navigator.of(ctx).pop(false),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('Hapus Semua'),
+                onPressed: () => Navigator.of(ctx).pop(true),
+              ),
+            ],
+          ),
+        ) ??
+        false;
 
     if (confirm) {
       await _dbHelper.deleteAllDailyStocks();
@@ -169,58 +189,76 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
   }
 
   Future<void> _deleteCustomer(int id) async {
-    final bool confirm = await showDialog(
-      context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        title: const Text('Konfirmasi Hapus'),
-        content: const Text('Anda yakin ingin menghapus data pelanggan ini?'),
-        actions: <Widget>[
-          TextButton(child: const Text('Batal'), onPressed: () => Navigator.of(ctx).pop(false)),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Hapus'),
-            onPressed: () => Navigator.of(ctx).pop(true),
+    final bool confirm =
+        await showDialog(
+          context: context,
+          builder: (BuildContext ctx) => AlertDialog(
+            title: const Text('Konfirmasi Hapus'),
+            content: const Text(
+              'Anda yakin ingin menghapus data pelanggan ini?',
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: const Text('Batal'),
+                onPressed: () => Navigator.of(ctx).pop(false),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('Hapus'),
+                onPressed: () => Navigator.of(ctx).pop(true),
+              ),
+            ],
           ),
-        ],
-      ),
-    ) ?? false;
+        ) ??
+        false;
 
     if (confirm) {
       try {
         await _dbHelper.deleteCustomer(id);
         _refreshAllData();
       } catch (e) {
-        if(mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menghapus pelanggan: $e')));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal menghapus pelanggan: $e')),
+          );
         }
       }
     }
   }
 
   Future<void> _deleteAllCustomers() async {
-    final bool confirm = await showDialog(
-      context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        title: const Text('Hapus Semua Pelanggan'),
-        content: const Text('ANDA YAKIN ingin menghapus SEMUA data pelanggan dari perangkat ini? Tindakan ini tidak dapat dibatalkan.'),
-        actions: <Widget>[
-          TextButton(child: const Text('Batal'), onPressed: () => Navigator.of(ctx).pop(false)),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Ya, Hapus Semua'),
-            onPressed: () => Navigator.of(ctx).pop(true),
+    final bool confirm =
+        await showDialog(
+          context: context,
+          builder: (BuildContext ctx) => AlertDialog(
+            title: const Text('Hapus Semua Pelanggan'),
+            content: const Text(
+              'ANDA YAKIN ingin menghapus SEMUA data pelanggan dari perangkat ini? Tindakan ini tidak dapat dibatalkan.',
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: const Text('Batal'),
+                onPressed: () => Navigator.of(ctx).pop(false),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('Ya, Hapus Semua'),
+                onPressed: () => Navigator.of(ctx).pop(true),
+              ),
+            ],
           ),
-        ],
-      ),
-    ) ?? false;
-    
+        ) ??
+        false;
+
     if (confirm) {
       try {
         await _dbHelper.deleteAllCustomers();
         _refreshAllData();
       } catch (e) {
-        if(mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menghapus semua pelanggan: $e')));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal menghapus semua pelanggan: $e')),
+          );
         }
       }
     }
@@ -244,21 +282,29 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
               TextFormField(
                 controller: nameController,
                 decoration: const InputDecoration(labelText: 'Nama'),
-                validator: (val) => val!.isEmpty ? 'Nama tidak boleh kosong' : null,
+                validator: (val) =>
+                    val!.isEmpty ? 'Nama tidak boleh kosong' : null,
               ),
               TextFormField(
                 controller: addressController,
-                decoration: const InputDecoration(labelText: 'Alamat (Opsional)'),
+                decoration: const InputDecoration(
+                  labelText: 'Alamat (Opsional)',
+                ),
               ),
               TextFormField(
                 controller: phoneController,
-                decoration: const InputDecoration(labelText: 'No. HP (Opsional)'),
+                decoration: const InputDecoration(
+                  labelText: 'No. HP (Opsional)',
+                ),
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
           TextButton(
             child: const Text('Simpan'),
             onPressed: () {
@@ -273,7 +319,7 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
             },
           ),
         ],
-      )
+      ),
     );
 
     if (updatedCustomer != null) {
@@ -281,8 +327,10 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
         await _dbHelper.updateCustomer(updatedCustomer);
         _refreshAllData();
       } catch (e) {
-         if(mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal memperbarui pelanggan: $e')));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal memperbarui pelanggan: $e')),
+          );
         }
       }
     }
@@ -306,7 +354,7 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
     try {
       final UserModel? userModel = await _authService.getUserModel(employeeUid);
       final userName = userModel?.name ?? 'Nama tidak ditemukan';
-      if(mounted){
+      if (mounted) {
         _employeeNames[employeeUid] = userName;
       }
       return userName;
@@ -323,8 +371,14 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
         children: [
           const TabBar(
             tabs: [
-              Tab(icon: Icon(Icons.delivery_dining_outlined), text: 'Log Pengantaran'),
-              Tab(icon: Icon(Icons.inventory_2_outlined), text: 'Data Stok Awal'),
+              Tab(
+                icon: Icon(Icons.delivery_dining_outlined),
+                text: 'Log Pengantaran',
+              ),
+              Tab(
+                icon: Icon(Icons.inventory_2_outlined),
+                text: 'Data Stok Awal',
+              ),
               Tab(icon: Icon(Icons.people_outline), text: 'Pelanggan'),
             ],
           ),
@@ -355,9 +409,10 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Ringkasan Log Pengantaran Lokal (delivery_log)',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Ringkasan Log Pengantaran Lokal (delivery_log)',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 10),
                   _isLoading
                       ? const LinearProgressIndicator()
@@ -365,7 +420,9 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('Pengantaran: $_totalLogs' + ' kali'),
-                            Text('Total Galon dari Log: $_totalGallonsInLogs galon'),
+                            Text(
+                              'Total Galon dari Log: $_totalGallonsInLogs galon',
+                            ),
                           ],
                         ),
                   const SizedBox(height: 10),
@@ -375,18 +432,28 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
                       Tooltip(
                         message: 'Hapus semua log yang sudah diringkas',
                         child: TextButton.icon(
-                          icon: Icon(Icons.delete_sweep_outlined, color: Colors.orange[700]),
-                          label: Text('Hapus Diringkas', style: TextStyle(color: Colors.orange[700])),
+                          icon: Icon(
+                            Icons.delete_sweep_outlined,
+                            color: Colors.orange[700],
+                          ),
+                          label: Text(
+                            'Hapus Diringkas',
+                            style: TextStyle(color: Colors.orange[700]),
+                          ),
                           onPressed: _isLoading ? null : _deleteSummarizedLogs,
                         ),
                       ),
                       Tooltip(
                         message: 'Hapus semua log pengantaran',
                         child: TextButton.icon(
-                          icon: const Icon(Icons.delete_forever_outlined,
-                              color: Colors.red),
-                          label: const Text('Hapus Semua',
-                              style: TextStyle(color: Colors.red)),
+                          icon: const Icon(
+                            Icons.delete_forever_outlined,
+                            color: Colors.red,
+                          ),
+                          label: const Text(
+                            'Hapus Semua',
+                            style: TextStyle(color: Colors.red),
+                          ),
                           onPressed: _isLoading ? null : _deleteAllLogs,
                         ),
                       ),
@@ -401,46 +468,55 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _localDeliveryLogs.isEmpty
-                    ? const Center(
-                        child: Text('Tidak ada log pengantaran tersimpan.'))
-                    : ListView.builder(
-                        itemCount: _localDeliveryLogs.length,
-                        itemBuilder: (context, index) {
-                          final log = _localDeliveryLogs[index];
-                          return Card(
-                            margin: const EdgeInsets.symmetric(
-                                horizontal: 8.0, vertical: 4.0),
-                            child: ListTile(
-                              title: Text(
-                                  'Waktu: ${DateFormat('dd MMM kk:mm', 'id_ID').format(log.timestamp)}'),
-                              subtitle: Text(
-                                  'Galon: ${log.gallons} - Karyawan: ${_employeeNames[log.employeeUid] ?? "Memuat..."}\nStatus: ${log.isSummarized ? "Sudah Diringkas" : "Belum Diringkas"}'),
-                              isThreeLine: true,
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: Icon(Icons.edit,
-                                        color: Theme.of(context).primaryColor),
-                                    onPressed: log.isSummarized
-                                        ? null
-                                        : () => _showEditLogDialog(log),
-                                    tooltip: log.isSummarized
-                                        ? "Tidak bisa edit log yang sudah diringkas"
-                                        : "Edit Log",
-                                  ),
-                                  IconButton(
-                                    icon: Icon(Icons.delete,
-                                        color: Colors.red[700]),
-                                    onPressed: () => _deleteLog(log.id!),
-                                    tooltip: "Hapus Log",
-                                  ),
-                                ],
+                ? const Center(
+                    child: Text('Tidak ada log pengantaran tersimpan.'),
+                  )
+                : ListView.builder(
+                    itemCount: _localDeliveryLogs.length,
+                    itemBuilder: (context, index) {
+                      final log = _localDeliveryLogs[index];
+                      return Card(
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 8.0,
+                          vertical: 4.0,
+                        ),
+                        child: ListTile(
+                          title: Text(
+                            'Waktu: ${DateFormat('dd MMM kk:mm', 'id_ID').format(log.timestamp)}',
+                          ),
+                          subtitle: Text(
+                            'Galon: ${log.gallons} - Karyawan: ${_employeeNames[log.employeeUid] ?? "Memuat..."}\nStatus: ${log.isSummarized ? "Sudah Diringkas" : "Belum Diringkas"}',
+                          ),
+                          isThreeLine: true,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: Icon(
+                                  Icons.edit,
+                                  color: Theme.of(context).primaryColor,
+                                ),
+                                onPressed: log.isSummarized
+                                    ? null
+                                    : () => _showEditLogDialog(log),
+                                tooltip: log.isSummarized
+                                    ? "Tidak bisa edit log yang sudah diringkas"
+                                    : "Edit Log",
                               ),
-                            ),
-                          );
-                        },
-                      ),
+                              IconButton(
+                                icon: Icon(
+                                  Icons.delete,
+                                  color: Colors.red[700],
+                                ),
+                                onPressed: () => _deleteLog(log.id!),
+                                tooltip: "Hapus Log",
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -460,20 +536,32 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Data Stok Awal Lokal (daily_stock)',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Data Stok Awal Lokal (daily_stock)',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 10),
                   _isLoading
                       ? const LinearProgressIndicator()
-                      : Text('Total Data Tersimpan: ${_localStockData.length} hari'),
+                      : Text(
+                          'Total Data Tersimpan: ${_localStockData.length} hari',
+                        ),
                   const SizedBox(height: 10),
                   Center(
                     child: Tooltip(
                       message: 'Hapus semua data stok awal lokal',
                       child: TextButton.icon(
-                        icon: const Icon(Icons.delete_forever_outlined, color: Colors.red),
-                        label: const Text('Hapus Semua Stok', style: TextStyle(color: Colors.red)),
-                        onPressed: _isLoading || _localStockData.isEmpty ? null : _deleteAllStocks,
+                        icon: const Icon(
+                          Icons.delete_forever_outlined,
+                          color: Colors.red,
+                        ),
+                        label: const Text(
+                          'Hapus Semua Stok',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                        onPressed: _isLoading || _localStockData.isEmpty
+                            ? null
+                            : _deleteAllStocks,
                       ),
                     ),
                   ),
@@ -486,47 +574,62 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _localStockData.isEmpty
-                    ? const Center(child: Text('Tidak ada data stok tersimpan.'))
-                    : ListView.builder(
-                        itemCount: _localStockData.length,
-                        itemBuilder: (context, index) {
-                          final stock = _localStockData[index];
-                          return Card(
-                            margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                            child: ListTile(
-                              title: Text('Tanggal: ${DateFormat('EEEE, dd MMM yyyy', 'id_ID').format(DateTime.parse(stock.id))}'),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Stok Isi: ${stock.initialStock} Galon'),
-                                  Text('Stok Kosong: ${stock.initialEmptyStock} Galon'),
-                                  FutureBuilder<String>(
-                                    future: _getEmployeeName(stock.updatedByUid),
-                                    builder: (context, snapshot) {
-                                      return Text('Diupdate oleh: ${snapshot.data ?? "Memuat..."}');
-                                    },
-                                  ),
-                                ],
+                ? const Center(child: Text('Tidak ada data stok tersimpan.'))
+                : ListView.builder(
+                    itemCount: _localStockData.length,
+                    itemBuilder: (context, index) {
+                      final stock = _localStockData[index];
+                      return Card(
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 8.0,
+                          vertical: 4.0,
+                        ),
+                        child: ListTile(
+                          title: Text(
+                            'Tanggal: ${DateFormat('EEEE, dd MMM yyyy', 'id_ID').format(DateTime.parse(stock.id))}',
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Stok Isi: ${stock.initialStock} Galon'),
+                              Text(
+                                'Stok Kosong: ${stock.initialEmptyStock} Galon',
                               ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: Icon(Icons.edit, color: Theme.of(context).primaryColor),
-                                    onPressed: () => _showEditStockDialog(stock),
-                                    tooltip: 'Edit Stok',
-                                  ),
-                                  IconButton(
-                                    icon: Icon(Icons.delete, color: Colors.red[700]),
-                                    onPressed: () => _deleteStock(stock.id),
-                                    tooltip: 'Hapus Stok',
-                                  ),
-                                ],
+                              FutureBuilder<String>(
+                                future: _getEmployeeName(stock.updatedByUid),
+                                builder: (context, snapshot) {
+                                  return Text(
+                                    'Diupdate oleh: ${snapshot.data ?? "Memuat..."}',
+                                  );
+                                },
                               ),
-                            ),
-                          );
-                        },
-                      ),
+                            ],
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: Icon(
+                                  Icons.edit,
+                                  color: Theme.of(context).primaryColor,
+                                ),
+                                onPressed: () => _showEditStockDialog(stock),
+                                tooltip: 'Edit Stok',
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  Icons.delete,
+                                  color: Colors.red[700],
+                                ),
+                                onPressed: () => _deleteStock(stock.id),
+                                tooltip: 'Hapus Stok',
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -546,8 +649,10 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Data Pelanggan Lokal (customers)',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Data Pelanggan Lokal (customers)',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 10),
                   _isLoading
                       ? const LinearProgressIndicator()
@@ -557,9 +662,17 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
                     child: Tooltip(
                       message: 'Hapus semua data pelanggan dari perangkat ini',
                       child: TextButton.icon(
-                        icon: const Icon(Icons.delete_forever_outlined, color: Colors.red),
-                        label: const Text('Hapus Semua Pelanggan', style: TextStyle(color: Colors.red)),
-                        onPressed: _isLoading || _localCustomers.isEmpty ? null : _deleteAllCustomers,
+                        icon: const Icon(
+                          Icons.delete_forever_outlined,
+                          color: Colors.red,
+                        ),
+                        label: const Text(
+                          'Hapus Semua Pelanggan',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                        onPressed: _isLoading || _localCustomers.isEmpty
+                            ? null
+                            : _deleteAllCustomers,
                       ),
                     ),
                   ),
@@ -572,38 +685,50 @@ class _LocalSalesManagementWidgetState extends State<LocalSalesManagementWidget>
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _localCustomers.isEmpty
-                    ? const Center(child: Text('Tidak ada data pelanggan tersimpan.'))
-                    : ListView.builder(
-                        itemCount: _localCustomers.length,
-                        itemBuilder: (context, index) {
-                          final customer = _localCustomers[index];
-                          return Card(
-                            margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                            child: ListTile(
-                              title: Text(customer.name),
-                              subtitle: Text(
-                                'Alamat: ${customer.address ?? '-'}\nNo HP: ${customer.phoneNumber ?? '-'}',
+                ? const Center(
+                    child: Text('Tidak ada data pelanggan tersimpan.'),
+                  )
+                : ListView.builder(
+                    itemCount: _localCustomers.length,
+                    itemBuilder: (context, index) {
+                      final customer = _localCustomers[index];
+                      return Card(
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 8.0,
+                          vertical: 4.0,
+                        ),
+                        child: ListTile(
+                          title: Text(customer.name),
+                          subtitle: Text(
+                            'Alamat: ${customer.address ?? '-'}\nNo HP: ${customer.phoneNumber ?? '-'}',
+                          ),
+                          isThreeLine: true,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: Icon(
+                                  Icons.edit,
+                                  color: Theme.of(context).primaryColor,
+                                ),
+                                onPressed: () =>
+                                    _showEditCustomerDialog(customer),
+                                tooltip: 'Edit Pelanggan',
                               ),
-                              isThreeLine: true,
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: Icon(Icons.edit, color: Theme.of(context).primaryColor),
-                                    onPressed: () => _showEditCustomerDialog(customer),
-                                    tooltip: 'Edit Pelanggan',
-                                  ),
-                                  IconButton(
-                                    icon: Icon(Icons.delete, color: Colors.red[700]),
-                                    onPressed: () => _deleteCustomer(customer.id!),
-                                    tooltip: 'Hapus Pelanggan',
-                                  ),
-                                ],
+                              IconButton(
+                                icon: Icon(
+                                  Icons.delete,
+                                  color: Colors.red[700],
+                                ),
+                                onPressed: () => _deleteCustomer(customer.id!),
+                                tooltip: 'Hapus Pelanggan',
                               ),
-                            ),
-                          );
-                        },
-                      ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

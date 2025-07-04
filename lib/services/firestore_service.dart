@@ -65,6 +65,49 @@ class FirestoreService {
     }
   }
 
+  Future<String?> completeOrderTransaction(Order order) async {
+    if (order.firestoreId == null) {
+      return "Order ID tidak ditemukan.";
+    }
+
+    final orderRef = _db.collection('orders').doc(order.firestoreId!);
+    final stockDocId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final stockRef = _db.collection('daily_stock_levels').doc(stockDocId);
+    final saleDocId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final saleRef = _db.collection('daily_sales').doc(saleDocId);
+
+    try {
+      await _db.runTransaction((transaction) async {
+        // 1. Get the current stock document to ensure it exists.
+        final stockSnapshot = await transaction.get(stockRef);
+        if (!stockSnapshot.exists) {
+          // This case should ideally be handled by creating a stock doc at the start of the day.
+          // However, as a fallback, we can throw an error.
+          throw Exception("Dokumen stok untuk hari ini tidak ditemukan.");
+        }
+
+        // 2. Update order status
+        transaction.update(orderRef, {
+          'status': OrderStatus.delivered,
+          'deliveredAt': Timestamp.now(),
+        });
+
+        // 3. Adjust current stock (decrement)
+        transaction.update(stockRef, {
+          'current_stock': FieldValue.increment(-order.gallonQuantity),
+        });
+
+        // 4. Record the sale (increment quantity and delivery count)
+        transaction.set(saleRef,
+            {'quantity': FieldValue.increment(order.gallonQuantity), 'delivery_count': FieldValue.increment(1)}, SetOptions(merge: true));
+      });
+      return null; // Success
+    } catch (e) {
+      print('Error completing order transaction: $e');
+      return e.toString();
+    }
+  }
+
   // --- Operasi untuk Galon Kembali ---
   
   Future<String?> addReturnedGallonLog({required int quantity, required String employeeUid}) async {
