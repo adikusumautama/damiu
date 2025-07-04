@@ -127,6 +127,17 @@ class FirestoreService {
   }
   
   // --- Operasi untuk Stok (Stock) ---
+  
+  // --- FUNGSI BARU ---
+  // Fungsi untuk mengambil data stok sekali (bukan stream)
+  Future<DailyStock?> getDailyStockOnce(DateTime date) async {
+    String docId = DateFormat('yyyy-MM-dd').format(date);
+    final doc = await _db.collection('daily_stock_levels').doc(docId).get();
+    if (doc.exists) {
+      return DailyStock.fromFirestore(doc);
+    }
+    return null;
+  }
 
   Stream<DailyStock?> getDailyStockStream(DateTime date) {
     String docId = DateFormat('yyyy-MM-dd').format(date);

@@ -31,7 +31,6 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
         _isLoading = true;
       });
 
-      // Ambil UID karyawan untuk pencatatan (opsional, tapi bagus untuk audit)
       final String? employeeUid = _authService.getCurrentUser()?.uid;
       if (employeeUid == null) {
         if (mounted) {
@@ -45,22 +44,29 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
       
       final int quantity = int.parse(_gallonQuantityController.text);
 
-      // Langsung panggil fungsi untuk menambah stok di server.
-      // Angka positif berarti menambah.
-      final error = await _firestoreService.adjustCurrentStock(quantity);
+      // --- PERUBAHAN LOGIKA DI SINI ---
+      // 1. Catat log galon kembali untuk perhitungan harian.
+      final logError = await _firestoreService.addReturnedGallonLog(
+        quantity: quantity, 
+        employeeUid: employeeUid
+      );
+
+      // 2. Sesuaikan juga total persediaan saat ini.
+      final stockError = await _firestoreService.adjustCurrentStock(quantity);
 
       if (mounted) {
-        if (error == null) {
+        if (logError == null && stockError == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Berhasil memperbarui stok!')),
+            const SnackBar(content: Text('Berhasil memperbarui stok dan log!')),
           );
           Navigator.pop(context, true);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Gagal memperbarui stok: $error')),
+            SnackBar(content: Text('Gagal memperbarui data: ${logError ?? stockError}')),
           );
         }
       }
+      // --- AKHIR PERUBAHAN ---
 
       if(mounted){
         setState(() {
