@@ -38,14 +38,13 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   bool _isSyncing = false;
   late StreamSubscription _connectivitySubscription;
 
-  // Getters untuk diakses oleh UI
+  // Getters
   int get selectedIndex => _selectedIndex;
   bool get isOnline => _isOnline;
   UserModel? get currentUser => _currentUser;
   List<Order> get localOrders => _localOrders;
   bool get isSyncing => _isSyncing;
 
-  // Inisialisasi
   KaryawanHomeViewModel() {
     _init();
   }
@@ -68,7 +67,6 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     super.dispose();
   }
 
-  // --- LOGIKA KONEKTIVITAS DAN SINKRONISASI ---
   void _initConnectivity() {
     Connectivity().checkConnectivity().then((results) {
       _updateConnectionStatus(results, isInitial: true);
@@ -91,29 +89,31 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   }
 
   Future<void> syncData() async {
+    if (_isSyncing) return;
     _isSyncing = true;
     notifyListeners();
     try {
       await _syncService.syncAllData();
       await _loadLocalOrders();
     } catch (e) {
-      print('Error saat sinkronisasi otomatis: $e');
+      // Sebaiknya gunakan logger di sini
     } finally {
       _isSyncing = false;
       notifyListeners();
     }
   }
 
-  // --- LOGIKA DATA ---
   Future<void> _loadCurrentUser() async {
     final user = _authService.getCurrentUser();
     if (user != null) {
       _currentUser = await _authService.getUserModel(user.uid);
     }
+    notifyListeners();
   }
 
   Future<void> _loadLocalOrders() async {
     _localOrders = await _dbHelper.getUnsyncedOrders();
+    notifyListeners();
   }
 
   void onItemTapped(int index) {
@@ -121,39 +121,16 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- LOGIKA AKSI (Callbacks untuk UI) ---
   Future<String?> onStartDelivery(Order order) async {
-    if(order.firestoreId == null) return "Order ID tidak ada.";
+    if(order.firestoreId == null) return "Order ID tidak valid.";
     return await _firestoreService.updateOrderStatus(order.firestoreId!, OrderStatus.inDelivery);
   }
 
   Future<String?> onCompleteDelivery(Order order) async {
     return await _firestoreService.completeOrderTransaction(order);
   }
-
-  Future<void> onSetInitialStock(BuildContext context) async {
-    final result = await showDialog<Map<String, int>>(
-      context: context,
-      builder: (ctx) => const SetStockDialog(),
-    );
-    if (result != null && _currentUser != null) {
-      if (_isOnline) {
-        await _firestoreService.setInitialStock(
-          date: DateTime.now(),
-          filledStock: result['stock'] ?? 0,
-          updatedByUid: _currentUser!.uid,
-        );
-      } else {
-        await _dbHelper.setInitialStock(
-          date: DateTime.now(),
-          filledStock: result['stock'] ?? 0,
-          updatedByUid: _currentUser!.uid,
-        );
-      }
-      notifyListeners();
-    }
-  }
-
+  
+  // --- PERBAIKAN: Fungsi ini sekarang menerima argumen yang benar ---
   Future<void> onAddOrder({
     required String customerName,
     required int gallonQuantity,
@@ -182,14 +159,43 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       await _firestoreService.addOrder(newOrder);
     } else {
       await _dbHelper.insertOrder(newOrder);
-      await _loadLocalOrders();
+      await _loadLocalOrders(); // Langsung panggil method internal
     }
     notifyListeners();
+  }
+
+  Future<void> onSetInitialStock(BuildContext context) async {
+    final result = await showDialog<Map<String, int>>(
+      context: context,
+      builder: (ctx) => const SetStockDialog(),
+    );
+    if (result != null && _currentUser != null) {
+      if (_isOnline) {
+        await _firestoreService.setInitialStock(
+          date: DateTime.now(),
+          filledStock: result['stock'] ?? 0,
+          updatedByUid: _currentUser!.uid,
+        );
+      } else {
+        await _dbHelper.setInitialStock(
+          date: DateTime.now(),
+          filledStock: result['stock'] ?? 0,
+          updatedByUid: _currentUser!.uid,
+        );
+      }
+      notifyListeners();
+    }
+  }
+  
+  Future<void> completeLocalOrder(Order order) async {
+      await _dbHelper.updateOrderStatus(order.id!, OrderStatus.delivered, setDeliveredTime: true);
+      // Logika lain untuk offline (jika ada) bisa ditambahkan di sini
+      await _loadLocalOrders();
   }
 }
 
 // ======================================================================
-// WIDGET (UI): Menjadi lebih bersih dan hanya fokus pada tampilan
+// WIDGET (UI)
 // ======================================================================
 class KaryawanHomeScreen extends StatelessWidget {
   const KaryawanHomeScreen({super.key});
@@ -200,7 +206,6 @@ class KaryawanHomeScreen extends StatelessWidget {
       create: (_) => KaryawanHomeViewModel(),
       child: Consumer<KaryawanHomeViewModel>(
         builder: (context, viewModel, child) {
-          final pages = _buildPages(context, viewModel);
           return Scaffold(
             appBar: AppBar(
               title: Text(_getAppBarTitle(viewModel.selectedIndex)),
@@ -223,7 +228,7 @@ class KaryawanHomeScreen extends StatelessWidget {
                     )
                   : null,
             ),
-            body: IndexedStack(index: viewModel.selectedIndex, children: pages),
+            body: IndexedStack(index: viewModel.selectedIndex, children: _buildPages(context, viewModel)),
             bottomNavigationBar: BottomNavigationBar(
               items: const [
                 BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'),
@@ -247,12 +252,8 @@ class KaryawanHomeScreen extends StatelessWidget {
   }
 
   String _getAppBarTitle(int index) {
-    switch (index) {
-      case 0: return 'Beranda';
-      case 1: return 'Buku Pelanggan';
-      case 2: return 'Profil';
-      default: return 'Damiu App';
-    }
+    const titles = ['Beranda', 'Buku Pelanggan', 'Profil'];
+    return titles[index];
   }
 
   List<Widget> _buildPages(BuildContext context, KaryawanHomeViewModel viewModel) {
@@ -264,7 +265,7 @@ class KaryawanHomeScreen extends StatelessWidget {
         : OrderSummary(orders: viewModel.localOrders, isOnline: false);
 
     return [
-      // Halaman Beranda (index 0)
+      // Halaman Beranda
       Column(
         children: [
           summaryWidget,
@@ -283,20 +284,21 @@ class KaryawanHomeScreen extends StatelessWidget {
                 : OrdersLocalWidget(
                     orders: viewModel.localOrders,
                     onStartDelivery: (order) async {
+                      if (order.id == null) return;
                       await viewModel._dbHelper.updateOrderStatus(order.id!, OrderStatus.inDelivery);
-                      viewModel._loadLocalOrders();
-                      viewModel.notifyListeners();
+                      await viewModel._loadLocalOrders();
                     },
                     onCompleteDelivery: (order) async {
-                      // Offline completion logic here
+                       if (order.id == null) return;
+                       await viewModel.completeLocalOrder(order);
                     },
                   ),
           ),
         ],
       ),
-      // Halaman Buku Pelanggan (index 1)
+      // Halaman Buku Pelanggan
       CustomerBook(isOnline: viewModel.isOnline),
-      // Halaman Profil (index 2)
+      // Halaman Profil
       ProfileSection(
         user: viewModel.currentUser,
         onLogout: () {
@@ -322,22 +324,34 @@ class KaryawanHomeScreen extends StatelessWidget {
     ];
   }
 
+  // --- PERBAIKAN: Tipe data parameter callback sekarang sudah benar ---
   void _showAddOrderDialog(BuildContext context, KaryawanHomeViewModel viewModel) {
     showDialog(
       context: context,
       builder: (ctx) => AddOrderDialog(
-        onSubmit: (args) => viewModel.onAddOrder(
-          customerName: args.customerName,
-          gallonQuantity: args.gallonQuantity,
-          otherItems: args.otherItems,
-          address: args.address,
-          phoneNumber: args.phoneNumber,
-          date: args.date,
-        ),
+        onSubmit: ({
+          required String customerName,
+          required int gallonQuantity,
+          String? otherItems,
+          String? address,
+          String? phoneNumber,
+          required DateTime date,
+        }) async {
+          // Memanggil method di ViewModel dengan argumen yang benar
+          await viewModel.onAddOrder(
+            customerName: customerName,
+            gallonQuantity: gallonQuantity,
+            otherItems: otherItems,
+            address: address,
+            phoneNumber: phoneNumber,
+            date: date,
+          );
+        },
       ),
     );
   }
 
+  // --- PERBAIKAN: Menambahkan pengecekan `mounted` sebelum menampilkan SnackBar ---
   void _handleApiError(BuildContext context, String? error) {
     if (error != null && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
