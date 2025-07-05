@@ -80,10 +80,10 @@ class FirestoreService {
 
     try {
       await _db.runTransaction((transaction) async {
-        // 1. Get the current stock document to ensure it exists.
+        // 1. Dapatkan dokumen stok saat ini untuk memastikan keberadaannya.
         final stockSnapshot = await transaction.get(stockRef);
         if (!stockSnapshot.exists) {
-          // Jika dokumen stok belum ada, buat dokumen stok default untuk tanggal order
+          // Jika dokumen stok belum ada, buat dokumen stok default untuk tanggal pesanan
           transaction.set(stockRef, {
             'initial_stock': 0,
             'current_stock': 0,
@@ -91,23 +91,31 @@ class FirestoreService {
             'updated_by_uid': order.employeeUid ?? '-',
           }, SetOptions(merge: true));
         }
-        // Ambil ulang snapshot setelah create (atau gunakan yang sudah ada)
-        // 2. Update order status
+        
+        // 2. Perbarui status pesanan
         transaction.update(orderRef, {
           'status': OrderStatus.delivered,
           'deliveredAt': Timestamp.now(),
         });
 
-        // 3. Adjust current stock (decrement)
+        // 3. Sesuaikan stok saat ini (berkurang)
         transaction.update(stockRef, {
           'current_stock': FieldValue.increment(-(order.gallonQuantity ?? 0)),
         });
 
-        // 4. Record the sale (increment quantity and delivery count)
-        transaction.set(saleRef,
-            {'quantity': FieldValue.increment(order.gallonQuantity ?? 0), 'delivery_count': FieldValue.increment(1)}, SetOptions(merge: true));
+        // 4. Catat penjualan (tambahkan kuantitas dan jumlah pengiriman)
+        //    PASTIKAN SEMUA FIELD YANG DIPERLUKAN DIKIRIM KE 'daily_sales'
+        transaction.set(saleRef, {
+            'quantity': FieldValue.increment(order.gallonQuantity ?? 0), 
+            'delivery_count': FieldValue.increment(1),
+            // ---- PERBAIKAN UTAMA ADA DI SINI ----
+            'date': Timestamp.fromDate(orderDate), // Pastikan field 'date' dikirim
+            'day_of_week': orderDate.weekday,     // Pastikan field 'day_of_week' dikirim
+            'employee_uid': order.employeeUid,
+        }, SetOptions(merge: true));
+
       });
-      return null; // Success
+      return null; // Sukses
     } catch (e) {
       print('Error completing order transaction: $e');
       return e.toString();
@@ -186,13 +194,11 @@ class FirestoreService {
     });
   }
   
-  /// Ambil semua pelanggan dari Firestore (sekali, bukan stream)
   Future<List<Customer>> getAllCustomersOnce() async {
     final snapshot = await _db.collection('customers').get();
     return snapshot.docs.map((doc) => Customer.fromFirestore(doc.data(), doc.id)).toList();
   }
 
-  /// Ambil semua pesanan dari Firestore (sekali, bukan stream)
   Future<List<Order>> getAllOrdersOnce() async {
     final snapshot = await _db.collection('orders').get();
     return snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList();
@@ -200,8 +206,6 @@ class FirestoreService {
 
   // --- Operasi untuk Stok (Stock) ---
   
-  // --- FUNGSI BARU ---
-  // Fungsi untuk mengambil data stok sekali (bukan stream)
   Future<DailyStock?> getDailyStockOnce(DateTime date) async {
     String docId = DateFormat('yyyy-MM-dd').format(date);
     final doc = await _db.collection('daily_stock_levels').doc(docId).get();
@@ -287,6 +291,7 @@ class FirestoreService {
     final docRef = _db.collection('daily_sales').doc(docId);
 
     try {
+      // Pastikan semua field dikirim untuk konsistensi
       await docRef.set({
         'date': Timestamp.fromDate(date),
         'day_of_week': date.weekday,
@@ -306,12 +311,10 @@ class FirestoreService {
       if (snapshot.exists) {
         return DailySale.fromMap(snapshot.data() as Map<String, dynamic>);
       }
-      // Jika belum ada penjualan hari ini, kembalikan data kosong yang valid
       return DailySale(
         date: DateTime.now(),
         quantity: 0,
         deliveryCount: 0,
-        // dayOfWeek akan dihitung otomatis oleh constructor
       );
     });
   }
@@ -368,10 +371,12 @@ class FirestoreService {
   Future<String?> upsertDailySale(DailySale sale) async {
     try {
       String docId = DateFormat('yyyy-MM-dd').format(sale.date);
+      // Pastikan semua field dikirim untuk konsistensi
       await _db.collection('daily_sales').doc(docId).set({
         'date': Timestamp.fromDate(sale.date),
         'day_of_week': sale.dayOfWeek,
         'quantity': sale.quantity,
+        'delivery_count': sale.deliveryCount
       }, SetOptions(merge: true));
       return null;
     } catch (e) {
@@ -476,14 +481,12 @@ class FirestoreService {
     }
   }
 
-  /// Stream semua pesanan (real-time)
   Stream<List<Order>> getOrdersStream() {
     return _db.collection('orders').snapshots().map((snapshot) {
       return snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList();
     });
   }
 
-  /// Stream semua stok harian (real-time)
   Stream<List<DailyStock>> getStocksStream() {
     return _db.collection('daily_stock_levels').snapshots().map((snapshot) {
       return snapshot.docs.map((doc) => DailyStock.fromFirestore(doc)).toList();

@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class DailySale {
   final int? id;
   final DateTime date;
-  final int dayOfWeek; // Tetap ada, tapi kita akan buat logikanya lebih baik
+  final int dayOfWeek; 
   final int deliveryCount;
   final int quantity;
   final bool isSynced;
@@ -15,13 +15,13 @@ class DailySale {
   DailySale({
     this.id,
     required this.date,
-    int? dayOfWeek, // Jadikan opsional di sini
+    int? dayOfWeek, 
     required this.deliveryCount,
     required this.quantity,
     this.isSynced = false,
     this.employeeUid,
     this.firestoreId,
-  }) : dayOfWeek = dayOfWeek ?? date.weekday; // Jika null, hitung dari tanggal
+  }) : dayOfWeek = dayOfWeek ?? date.weekday; 
 
   DailySale copyWith({
     int? id,
@@ -57,12 +57,18 @@ class DailySale {
     };
   }
 
+  // ---- PERBAIKAN UTAMA ADA DI FUNGSI INI ----
   factory DailySale.fromMap(Map<String, dynamic> map) {
     DateTime saleDate;
+    
+    // Cek apakah data berasal dari Firestore (Timestamp) atau lokal (String)
     if (map['date'] is Timestamp) {
       saleDate = (map['date'] as Timestamp).toDate();
-    } else {
+    } else if (map['date'] is String) {
       saleDate = DateTime.parse(map['date'] as String);
+    } else {
+      // Fallback jika format tidak dikenali, meskipun seharusnya tidak terjadi
+      saleDate = DateTime.now();
     }
 
     return DailySale(

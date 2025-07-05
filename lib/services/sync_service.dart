@@ -5,13 +5,13 @@ import 'package:damiu/models/customer_model.dart';
 import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/services/database_helper.dart';
-import 'package:damiu/services/firestore_service.dart';
+import 'package.damiu/services/firestore_service.dart';
 
 class SyncService {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final FirestoreService _firestoreService = FirestoreService();
 
-  /// Mengirim data pelanggan baru ke Firestore.
+  /// Mengirim data pelanggan baru atau yang diperbarui ke Firestore.
   Future<void> syncCustomers() async {
     print('[SyncService] Memeriksa data pelanggan...');
     final unsyncedCustomers = await _dbHelper.getUnsyncedCustomers();
@@ -87,6 +87,33 @@ class SyncService {
     }
     print('[SyncService] Sinkronisasi pesanan selesai.');
   }
+
+  // --- FUNGSI BARU UNTUK SINKRONISASI PENJUALAN HARIAN ---
+  /// Mengirim data penjualan harian dari lokal ke Firestore.
+  Future<void> syncDailySales() async {
+    print('[SyncService] Memeriksa data penjualan harian lokal...');
+    final unsyncedSales = await _dbHelper.getUnsyncedSales();
+
+    if (unsyncedSales.isEmpty) {
+      print('[SyncService] Tidak ada data penjualan harian untuk disinkronkan.');
+      return;
+    }
+
+    print('[SyncService] Menemukan ${unsyncedSales.length} data penjualan untuk disinkronkan.');
+    for (final sale in unsyncedSales) {
+      try {
+        // Gunakan upsert untuk membuat atau memperbarui dokumen di Firestore
+        await _firestoreService.upsertDailySale(sale);
+        // Setelah berhasil, tandai sebagai sudah sinkron di database lokal
+        if (sale.id != null) {
+          await _dbHelper.markSaleAsSynced(sale.id!);
+          print('[SyncService] Data penjualan untuk tanggal ${sale.date.toIso8601String().substring(0, 10)} berhasil disinkronkan.');
+        }
+      } catch (e) {
+        print('[SyncService] Gagal sinkronisasi data penjualan tanggal ${sale.date.toIso8601String().substring(0, 10)}: $e');
+      }
+    }
+  }
   
   /// Menarik data pelanggan terbaru dari Firestore ke database lokal
   Future<void> pullCustomersFromFirestore() async {
@@ -140,6 +167,8 @@ class SyncService {
     print('=== MEMULAI SINKRONISASI SEMUA DATA (TWO-WAY) ===');
     await syncCustomers();
     await syncOrders();
+    // ---- PEMANGGILAN FUNGSI BARU DITAMBAHKAN DI SINI ----
+    await syncDailySales(); 
     await pullCustomersFromFirestore();
     await pullOrdersFromFirestore();
     print('=== SINKRONISASI SEMUA DATA SELESAI ===');
