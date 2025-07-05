@@ -1,136 +1,155 @@
 // lib/services/sync_service.dart
+
+import 'dart:async';
+import 'package:damiu/models/customer_model.dart';
 import 'package:damiu/models/daily_sale_model.dart';
-import 'package:damiu/models/delivery_log_model.dart';
-import 'package:damiu/services/auth_service.dart';
+import 'package:damiu/models/order_model.dart';
 import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/services/firestore_service.dart';
-import 'package:intl/intl.dart'; // Impor intl
-
-// Definisikan SyncResult jika belum ada
-class SyncResult {
-  final bool success;
-  final String message;
-  SyncResult({required this.success, required this.message});
-}
 
 class SyncService {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final FirestoreService _firestoreService = FirestoreService();
-  final AuthService _authService = AuthService();
 
-  // ... (metode syncData yang sudah ada) ...
-  Future<SyncResult> syncData() async {
-    // ... implementasi syncData yang sudah ada ...
-    // Contoh placeholder jika belum ada:
-    try {
-      List<DailySale> unsyncedSales = await _dbHelper.getUnsyncedSales();
-      if (unsyncedSales.isEmpty) {
-        return SyncResult(success: true, message: 'Tidak ada data penjualan ringkas lokal yang perlu disinkronkan.');
+  /// Mengirim data pelanggan baru ke Firestore.
+  Future<void> syncCustomers() async {
+    print('[SyncService] Memeriksa data pelanggan...');
+    final unsyncedCustomers = await _dbHelper.getUnsyncedCustomers();
+    if (unsyncedCustomers.isEmpty) {
+      print('[SyncService] Tidak ada pelanggan baru untuk disinkronkan.');
+      return;
+    }
+
+    print('[SyncService] Menemukan ${unsyncedCustomers.length} pelanggan untuk disinkronkan.');
+    for (Customer customer in unsyncedCustomers) {
+      if (customer.name.trim().isEmpty) {
+        print('[SyncService] Melewati pelanggan dengan nama kosong.');
+        continue;
       }
-
-      for (DailySale sale in unsyncedSales) {
-        // Menggunakan upsertDailySale agar data di Firestore terupdate jika sudah ada untuk tanggal tersebut
-        String? error = await _firestoreService.upsertDailySale(sale.copyWith(isSynced: true));
-        if (error == null) {
-          if (sale.id != null) {
-            await _dbHelper.markSaleAsSynced(sale.id!);
-          }
+      try {
+        if (customer.firestoreId == null || customer.firestoreId!.isEmpty) {
+          // Pelanggan baru
+          final newId = await _firestoreService.addCustomer(customer);
+          await _dbHelper.markCustomerAsSynced(customer.id!, newId);
+          print('[SyncService] Pelanggan baru "${customer.name}" berhasil disinkronkan dengan ID: $newId');
         } else {
-          // Hentikan jika ada error dan laporkan
-          return SyncResult(success: false, message: 'Gagal sinkronisasi penjualan tanggal ${DateFormat('yyyy-MM-dd').format(sale.date)}: $error');
+          // Update pelanggan yang sudah ada
+          await _firestoreService.updateCustomer(customer);
+          await _dbHelper.markCustomerAsSynced(customer.id!, customer.firestoreId!);
+          print('[SyncService] Pelanggan "${customer.name}" berhasil diupdate.');
         }
+      } catch (e) {
+        print('[SyncService] Error saat sinkronisasi pelanggan "${customer.name}": $e');
       }
-      return SyncResult(success: true, message: 'Semua data penjualan ringkas lokal berhasil disinkronkan.');
-    } catch (e) {
-      return SyncResult(success: false, message: 'Error saat sinkronisasi: $e');
     }
   }
 
-
-  // Mengganti nama metode dan logikanya untuk menyinkronkan semua log yang belum diringkas
-  Future<SyncResult> syncAllUnsummarizedDeliveryLogs() async {
-    final String? currentEmployeeUid = _authService.getCurrentUser()?.uid;
-    if (currentEmployeeUid == null) {
-      return SyncResult(success: false, message: 'Pengguna tidak login.');
+  /// Mengirim pesanan baru atau perubahan status pesanan ke Firestore.
+  Future<void> syncOrders() async {
+    print('[SyncService] Memeriksa data pesanan...');
+    final unsyncedOrders = await _dbHelper.getUnsyncedOrders();
+    if (unsyncedOrders.isEmpty) {
+      print('[SyncService] Tidak ada pesanan untuk disinkronkan.');
+      return;
     }
 
-    try {
-      // 1. Dapatkan semua log pengantaran dari database lokal
-      final List<DeliveryLogItem> allLogs = await _dbHelper.getAllDeliveryLogs();
-      // 2. Filter untuk mendapatkan hanya yang belum diringkas
-      final List<DeliveryLogItem> unsummarizedLogs = allLogs.where((log) => !log.isSummarized).toList();
+    print('[SyncService] Menemukan ${unsyncedOrders.length} pesanan/perubahan status untuk disinkronkan.');
 
-      if (unsummarizedLogs.isEmpty) {
-        return SyncResult(success: true, message: 'Tidak ada data pengantaran baru untuk disinkronkan.');
+    for (var order in unsyncedOrders) {
+      try {
+        String? newFirestoreId = order.firestoreId;
+        String? error;
+
+        if (newFirestoreId == null || newFirestoreId.isEmpty) {
+          // Ini adalah pesanan baru, buat dokumen baru di Firestore.
+          print('[SyncService] Mengirim pesanan baru #${order.id} ke Firestore...');
+          newFirestoreId = await _firestoreService.addOrder(order);
+        } else {
+          // Ini adalah pesanan lama yang statusnya berubah.
+          print('[SyncService] Memperbarui status pesanan #${order.id} di Firestore...');
+          error = await _firestoreService.updateOrderStatus(
+            newFirestoreId, 
+            order.status ?? '', 
+            setDeliveredTime: order.status == OrderStatus.delivered
+          );
+        }
+
+        if (error == null && newFirestoreId != null) {
+          // Jika sukses, tandai sebagai sudah sinkron di database lokal
+          await _dbHelper.markOrderAsSynced(order.id!, newFirestoreId);
+          print('[SyncService] Pesanan #${order.id} untuk ${order.customerName ?? "-"} berhasil disinkronkan.');
+        } else if (error != null) {
+           print('[SyncService] Gagal sinkronisasi pesanan #${order.id}: $error');
+        }
+      } catch (e) {
+        print('[SyncService] Error saat sinkronisasi pesanan #${order.id}: $e');
       }
-
-      // 3. Kelompokkan log yang belum diringkas berdasarkan tanggalnya
-      final Map<DateTime, List<DeliveryLogItem>> logsByDate = {};
-      for (var log in unsummarizedLogs) {
-        final DateTime dateOnly = DateTime(log.timestamp.year, log.timestamp.month, log.timestamp.day);
-        if (logsByDate[dateOnly] == null) {
-          logsByDate[dateOnly] = [];
-        }
-        logsByDate[dateOnly]!.add(log);
-      }
-
-      int datesProcessed = 0;
-      int totalGallonsSyncedAllDates = 0;
-      int totalDeliveriesSyncedAllDates = 0;
-
-      // 4. Proses setiap grup tanggal
-      for (var entry in logsByDate.entries) {
-        final DateTime dateToProcess = entry.key;
-        final List<DeliveryLogItem> logsForThisDate = entry.value;
-
-        int totalGallonsForDate = 0;
-        for (var log in logsForThisDate) {
-          totalGallonsForDate += log.gallons;
-        }
-        final List<DeliveryLogItem> actualDeliveriesForDate = logsForThisDate.where((log) => !log.isNoDeliveryMarker).toList();
-        int deliveryCountForDate = actualDeliveriesForDate.length;
-
-        final DailySale dailySummary = DailySale(
-          date: dateToProcess,
-          dayOfWeek: dateToProcess.weekday,
-          deliveryCount: deliveryCountForDate,
-          quantity: totalGallonsForDate,
-          employeeUid: currentEmployeeUid, // Karyawan yang melakukan operasi sinkronisasi ini
-          isSynced: true, // Langsung ditandai sinkron karena dikirim ke Firestore
-        );
-
-        // a. Upsert ringkasan penjualan ke Firestore
-        String? firestoreError = await _firestoreService.upsertDailySale(dailySummary);
-        if (firestoreError != null) {
-          return SyncResult(success: false, message: 'Gagal sinkronisasi penjualan tanggal ${DateFormat('yyyy-MM-dd').format(dateToProcess)} ke Firestore: $firestoreError');
-        }
-
-        // b. Upsert metadata sinkronisasi ke Firestore
-        String? metadataError = await _firestoreService.upsertDailySyncMetadata(
-          date: dateToProcess,
-          deliveryCount: deliveryCountForDate,
-          employeeUid: currentEmployeeUid,
-        );
-        if (metadataError != null) {
-          return SyncResult(success: false, message: 'Gagal sinkronisasi metadata tanggal ${DateFormat('yyyy-MM-dd').format(dateToProcess)} ke Firestore: $metadataError');
-        }
-
-        // c. Upsert ringkasan ke tabel daily_sales lokal
-        await _dbHelper.upsertDailySummary(dailySummary);
-
-        // d. Tandai log pengantaran untuk tanggal ini sebagai sudah diringkas
-        await _dbHelper.markAllDeliveryLogsAsSummarizedByDate(dateToProcess);
-
-        datesProcessed++;
-        totalGallonsSyncedAllDates += totalGallonsForDate;
-        totalDeliveriesSyncedAllDates += deliveryCountForDate;
-      }
-
-      return SyncResult(success: true, message: 'Sinkronisasi berhasil untuk $datesProcessed hari. Total $totalDeliveriesSyncedAllDates pengantaran ($totalGallonsSyncedAllDates galon) telah diproses.');
-
-    } catch (e) {
-      print("Error during syncTodaysDeliverySummary: $e");
-      return SyncResult(success: false, message: 'Terjadi kesalahan saat sinkronisasi: $e');
     }
+    print('[SyncService] Sinkronisasi pesanan selesai.');
+  }
+  
+  /// Menarik data pelanggan terbaru dari Firestore ke database lokal
+  Future<void> pullCustomersFromFirestore() async {
+    print('[SyncService] Menarik data pelanggan dari Firestore ke lokal...');
+    final customers = await _firestoreService.getAllCustomersOnce();
+    for (final customer in customers) {
+      await _dbHelper.upsertCustomer(customer);
+    }
+    print('[SyncService] Sinkronisasi pull pelanggan selesai.');
+  }
+
+  /// Menarik data pesanan terbaru dari Firestore ke database lokal
+  Future<void> pullOrdersFromFirestore() async {
+    print('[SyncService] Menarik data pesanan dari Firestore ke lokal...');
+    final orders = await _firestoreService.getAllOrdersOnce();
+    for (final order in orders) {
+      await _dbHelper.upsertOrder(order);
+    }
+    print('[SyncService] Sinkronisasi pull pesanan selesai.');
+  }
+
+  /// Listener real-time pelanggan Firestore ke lokal (panggil saat online)
+  StreamSubscription listenCustomersRealtimeToLocal() {
+    return _firestoreService.getCustomersStream().listen((customers) async {
+      for (final customer in customers) {
+        await _dbHelper.upsertCustomer(customer);
+      }
+    });
+  }
+
+  /// Listener real-time pesanan Firestore ke lokal (panggil saat online)
+  StreamSubscription listenOrdersRealtimeToLocal() {
+    return _firestoreService.getOrdersStream().listen((orders) async {
+      for (final order in orders) {
+        await _dbHelper.upsertOrder(order);
+      }
+    });
+  }
+
+  /// Listener real-time stok Firestore ke lokal (panggil saat online)
+  StreamSubscription listenStocksRealtimeToLocal() {
+    return _firestoreService.getStocksStream().listen((stocks) async {
+      for (final stock in stocks) {
+        await _dbHelper.upsertDailyStock(stock);
+      }
+    });
+  }
+
+  /// Sinkronisasi dua arah: push lokal ke Firestore, lalu pull Firestore ke lokal
+  Future<void> syncAllData() async {
+    print('=== MEMULAI SINKRONISASI SEMUA DATA (TWO-WAY) ===');
+    await syncCustomers();
+    await syncOrders();
+    await pullCustomersFromFirestore();
+    await pullOrdersFromFirestore();
+    print('=== SINKRONISASI SEMUA DATA SELESAI ===');
+  }
+  
+  // Fungsi syncAllUnsummarizedDeliveryLogs mungkin tidak relevan lagi jika penjualan dicatat
+  // langsung dari status pesanan. Bisa dihapus atau disesuaikan jika masih ada fungsi lain.
+  Future<void> syncAllUnsummarizedDeliveryLogs() async {
+    // Untuk saat ini, fungsi ini bisa dikosongkan jika tidak dipakai
+    // agar tidak membingungkan.
+    print('[SyncService] syncAllUnsummarizedDeliveryLogs (saat ini tidak ada aksi).');
   }
 }

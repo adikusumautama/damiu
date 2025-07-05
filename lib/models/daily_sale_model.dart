@@ -1,53 +1,28 @@
 // lib/models/daily_sale_model.dart
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class DailySale {
-  final int? id; // Untuk SQLite primary key
-  final DateTime date; // Tanggal aktual penjualan
-  final int dayOfWeek; // Hari dalam angka (1-7), bisa di-derive dari date.weekday
-  final int deliveryCount; // Tambahkan field untuk jumlah pengantaran
+  final int? id;
+  final DateTime date;
+  final int dayOfWeek; // Tetap ada, tapi kita akan buat logikanya lebih baik
+  final int deliveryCount;
   final int quantity;
-  final bool isSynced; // Status sinkronisasi ke Firestore
-  final String? employeeUid; // UID karyawan yang menginput
-  final String? firestoreId; // ID dokumen di Firestore
+  final bool isSynced;
+  final String? employeeUid;
+  final String? firestoreId;
 
   DailySale({
     this.id,
     required this.date,
-    required this.dayOfWeek,
-    required this.deliveryCount, // Tambahkan ini
+    int? dayOfWeek, // Jadikan opsional di sini
+    required this.deliveryCount,
     required this.quantity,
     this.isSynced = false,
     this.employeeUid,
-    this.firestoreId, // Tambahkan firestoreId
-  });
+    this.firestoreId,
+  }) : dayOfWeek = dayOfWeek ?? date.weekday; // Jika null, hitung dari tanggal
 
-  // Konversi ke Map untuk SQLite dan Firestore
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'date': date.toIso8601String(),
-      'day_of_week': dayOfWeek, // Menyimpan day_of_week ke SQLite
-      'delivery_count': deliveryCount, // Tambahkan ini
-      'quantity': quantity,
-      'is_synced': isSynced ? 1 : 0,
-      'employee_uid': employeeUid,
-    };
-  }
-
-  // Membuat objek dari Map (dari SQLite dan Firestore)
-  factory DailySale.fromMap(Map<String, dynamic> map) {
-    return DailySale(
-      id: map['id'] as int?,
-      date: DateTime.parse(map['date'] as String),
-      dayOfWeek: map['day_of_week'] != null ? map['day_of_week'] as int : DateTime.parse(map['date'] as String).weekday, // Handle jika null dari DB lama
-      deliveryCount: (map['delivery_count'] as num?)?.toInt() ?? 0, // Baca delivery_count, default 0 jika null (untuk data lama)
-      quantity: (map['quantity'] as num).toInt(),
-      isSynced: map['is_synced'] == 1,
-      employeeUid: map['employee_uid'] as String?,
-      // firestoreId tidak ada di SQLite, hanya di-set saat membaca dari Firestore
-    );
-  }
-
-  // Metode copyWith untuk membuat instance baru dengan nilai yang diperbarui
   DailySale copyWith({
     int? id,
     DateTime? date,
@@ -67,6 +42,38 @@ class DailySale {
       isSynced: isSynced ?? this.isSynced,
       employeeUid: employeeUid ?? this.employeeUid,
       firestoreId: firestoreId ?? this.firestoreId,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'date': date.toIso8601String().substring(0, 10),
+      'day_of_week': dayOfWeek,
+      'delivery_count': deliveryCount,
+      'quantity': quantity,
+      'is_synced': isSynced ? 1 : 0,
+      'employee_uid': employeeUid,
+    };
+  }
+
+  factory DailySale.fromMap(Map<String, dynamic> map) {
+    DateTime saleDate;
+    if (map['date'] is Timestamp) {
+      saleDate = (map['date'] as Timestamp).toDate();
+    } else {
+      saleDate = DateTime.parse(map['date'] as String);
+    }
+
+    return DailySale(
+      id: map['id'] as int?,
+      date: saleDate,
+      dayOfWeek: map['day_of_week'] as int? ?? saleDate.weekday,
+      deliveryCount: (map['delivery_count'] as num?)?.toInt() ?? 0,
+      quantity: map['quantity'] as int,
+      isSynced: (map['is_synced'] as int? ?? 0) == 1,
+      employeeUid: map['employee_uid'] as String?,
+      firestoreId: map['firestoreId'] as String?,
     );
   }
 }

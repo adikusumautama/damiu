@@ -1,80 +1,115 @@
-// lib/screens/home/karyawan_home_screen.dart
-import 'package:damiu/models/user_model.dart'; // Impor UserModel
+// ======================================================================
+// FILE: lib/screens/home/karyawan_home_screen.dart
+// ======================================================================
+// FOKUS: File utama yang sekarang lebih ringkas, berisi logika state
+// dan menyusun widget-widget yang sudah dipecah.
+
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:damiu/models/order_model.dart';
+import 'package:damiu/models/user_model.dart';
+import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/services/auth_service.dart';
-import 'package:damiu/services/sync_service.dart'; // Import SyncService
-import 'package:damiu/services/database_helper.dart'; // Impor DatabaseHelper
+import 'package:damiu/services/firestore_service.dart';
+import 'package:damiu/services/database_helper.dart';
+import 'package:damiu/services/sync_service.dart';
 import 'package:flutter/material.dart';
-// Jika Anda memindahkan DailySalesInputScreen:
-import 'package:damiu/screens/other/local_sales_management_screen.dart'; // Impor widget baru
-import 'package:damiu/screens/other/daily_sales_input_screen.dart'; // Path baru
-import 'package:damiu/screens/other/karyawan_profile_screen.dart'; // Impor layar profil
+import 'widgets/add_order_dialog.dart';
+import 'widgets/order_summary.dart';
+import 'widgets/orders_list.dart';
+import 'widgets/set_stock_dialog.dart';
+import 'widgets/resource_board.dart';
+import 'widgets/profile_section.dart';
+import 'widgets/customer_book.dart';
+import '../../main.dart' show resetDailyStockIfNeeded;
+import '../other/local_sales_management_screen.dart'; // <-- TAMBAHKAN IMPORT INI
 
 class KaryawanHomeScreen extends StatefulWidget {
-  // Ubah menjadi StatefulWidget
   const KaryawanHomeScreen({super.key});
-
   @override
   State<KaryawanHomeScreen> createState() => _KaryawanHomeScreenState();
 }
 
-class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
-    with WidgetsBindingObserver {
-  // Tambahkan WidgetsBindingObserver
+class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
   int _selectedIndex = 0;
-  late Widget _currentScreenWidget;
-  late String _currentScreenTitle;
-  UserModel? _currentUserModel;
-  final AuthService _authService = AuthService();
-  final DatabaseHelper _dbHelper = DatabaseHelper(); // Tambahkan DatabaseHelper
-  bool _isDailySyncing = false; // State untuk sinkronisasi harian
-  bool _isSyncing = false;
+  bool _isOnline = true;
+  late StreamSubscription _connectivitySubscription;
+  final FirestoreService _firestoreService = FirestoreService();
+  final DatabaseHelper _dbHelper = DatabaseHelper();
   final SyncService _syncService = SyncService();
-
-  // Daftar widget untuk setiap tab BottomNavigationBar
-  // Kita perlu membuat instance KaryawanBerandaContent di initState atau build
-  // agar bisa meneruskan callback _loadTodaysStats.
-  // Jadi, _widgetOptions akan diinisialisasi nanti.
-  late List<Widget> _widgetOptions;
-  // static final List<Widget> _widgetOptions = <Widget>[
-  //   const KaryawanProfileScreen(), // Konten untuk Profil Karyawan
-  // ];
-
-  // Daftar judul AppBar untuk setiap tab
-  static const List<String> _appBarTitles = <String>[
-    'Beranda Karyawan',
-    'Profil Saya',
-  ]; // Pastikan ini tidak terkomentari
+  final AuthService _authService = AuthService();
+  UserModel? _currentUser;
+  List<Order> _localOrders = [];
 
   @override
   void initState() {
     super.initState();
-    // Inisialisasi _widgetOptions di sini agar bisa meneruskan _loadTodaysStats
-    _widgetOptions = <Widget>[
-      KaryawanBerandaContent( // Jadikan non-const
-        getIsDailySyncing: () => _isDailySyncing,
-        performDailySummarySyncCallback: _performAllPendingDeliverySync, // Ganti nama callback
-      ),
-      const KaryawanProfileScreen(),
-    ];
-    _currentScreenWidget =
-        _widgetOptions[_selectedIndex]; // Sekarang _widgetOptions sudah diinisialisasi
-    _currentScreenTitle = _appBarTitles[_selectedIndex];
+    _initConnectivity();
     _loadCurrentUser();
-    WidgetsBinding.instance.addObserver(this); // Daftarkan observer
+    _loadLocalOrders();
+    // Reset stok harian otomatis saat screen diinisialisasi
+    Future.microtask(() async {
+      await resetDailyStockIfNeeded(isOnline: _isOnline, employeeUid: _currentUser?.uid, activeDate: DateTime.now());
+    });
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this); // Hapus observer
+    _connectivitySubscription.cancel();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.resumed) {
-      // Aplikasi kembali ke foreground, muat ulang statistik
-      print("[KaryawanHomeScreen] App Resumed");
+  void _initConnectivity() async {
+    final results = await Connectivity().checkConnectivity();
+    // Panggil _updateConnectionStatus dengan list hasil awal
+    _updateConnectionStatus(results);
+    // Dengarkan perubahan konektivitas
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen(_updateConnectionStatus);
+  }
+
+  void _updateConnectionStatus(List<ConnectivityResult> results) async {
+    // Cek status mounted untuk menghindari error jika widget sudah di-dispose
+    if (!mounted) return;
+
+    final result = results.isNotEmpty ? results.first : ConnectivityResult.none;
+    final bool currentlyOnline = result != ConnectivityResult.none;
+
+    // Hanya update state dan tampilkan notifikasi jika statusnya berubah
+    if (currentlyOnline != _isOnline) {
+      setState(() {
+        _isOnline = currentlyOnline;
+      });
+
+      if (currentlyOnline) {
+        // Baru saja kembali online
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Koneksi kembali terhubung. Memulai sinkronisasi...'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        try {
+          await _syncService.syncAllData();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Sinkronisasi data selesai.'), backgroundColor: Colors.blue),
+            );
+            _loadLocalOrders(); // Muat ulang data setelah sinkronisasi
+          }
+        } catch (e) {
+          print('Error saat sinkronisasi otomatis: $e');
+        }
+      } else {
+        // Baru saja offline
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Anda sekarang offline. Perubahan akan disinkronkan nanti.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     }
   }
 
@@ -82,240 +117,273 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen>
     final user = _authService.getCurrentUser();
     if (user != null) {
       final userModel = await _authService.getUserModel(user.uid);
-      if (mounted) {
-        setState(() {
-          _currentUserModel = userModel;
-        });
-      }
+      setState(() => _currentUser = userModel);
     }
   }
 
-  Future<void> _performAllPendingDeliverySync() async { // Ganti nama metode
-    setState(() {
-      _isDailySyncing = true;
-    });
-
-    final result = await _syncService.syncAllUnsummarizedDeliveryLogs(); // Panggil metode baru
-
-    if (mounted) {
-      setState(() {
-        _isDailySyncing = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.message),
-          backgroundColor: result.success ? Colors.green : Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
-  Future<void> _performSync() async {
-    setState(() {
-      _isSyncing = true;
-    });
-
-    final result = await _syncService.syncData();
-
-    if (mounted) {
-      setState(() {
-        _isSyncing = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.message),
-          backgroundColor: result.success ? Colors.green : Colors.red,
-        ),
-      );
-    }
+  Future<void> _loadLocalOrders() async {
+    final orders = await _dbHelper.getUnsyncedOrders();
+    setState(() => _localOrders = orders);
   }
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-      _currentScreenWidget = _widgetOptions[index];
-      _currentScreenTitle = _appBarTitles[index];
-    });
+    setState(() => _selectedIndex = index);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(_currentScreenTitle)),
-      body: _currentScreenWidget, // Hapus Center, biarkan konten menentukan tata letak
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: <Widget>[
-            DrawerHeader(
-              decoration: BoxDecoration(color: Theme.of(context).primaryColor),
-              child: _currentUserModel == null
-                  ? const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _currentUserModel!.name ?? 'Karyawan',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _currentUserModel!.email,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
+    Widget summaryWidget = _isOnline
+        ? StreamBuilder<List<Order>>(
+            stream: _firestoreService.getOrdersStream(), // Tampilkan semua orders, tanpa filter tanggal
+            builder: (context, snapshot) {
+              final orders = snapshot.data ?? [];
+              return OrderSummary(orders: orders, isOnline: _isOnline);
+            },
+          )
+        : OrderSummary(orders: _localOrders, isOnline: _isOnline);
+
+    final List<Widget> _pages = [
+      Column(
+        children: [
+          if (!_isOnline)
+            Container(
+              width: double.infinity,
+              color: Colors.orange.shade100,
+              padding: const EdgeInsets.all(8),
+              child: const Text('Mode Offline: Data diambil dari lokal', style: TextStyle(color: Colors.orange)),
             ),
-            ListTile(
-              leading: const Icon(Icons.storage_outlined),
-              title: const Text('Kelola Data Lokal'),
-              onTap: () {
-                Navigator.pop(context); // Tutup drawer
-                setState(() {
-                  _currentScreenWidget =
-                      const LocalSalesManagementWidget(); // Ganti konten utama
-                  _currentScreenTitle =
-                      "Kelola Data Lokal"; // Ganti judul AppBar
-                  // Reset _selectedIndex agar BottomNav tidak aktif, atau set ke tab default
-                  // Jika ingin BottomNav tidak aktif, pastikan handle _selectedIndex yang tidak valid
-                  // Untuk amannya, bisa set ke 0 (Beranda)
-                  // _selectedIndex = 0;
-                  // _currentScreenWidget = _widgetOptions[0]; // Kembali ke beranda setelah dari drawer
-                });
-              },
-            ),
-            // Tambahkan item lain di drawer jika perlu
-          ],
-        ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            label: 'Beranda',
+          summaryWidget,
+          ResourceBoard(
+            isOnline: _isOnline,
+            employeeUid: _currentUser?.uid,
+            onSetStock: () async {
+              final result = await showDialog<Map<String, int>>(
+                context: context,
+                builder: (ctx) => const SetStockDialog(),
+              );
+              if (result != null) {
+                if (_isOnline) {
+                  await _firestoreService.setInitialStock(
+                    date: DateTime.now(),
+                    filledStock: result['stock'] ?? 0,
+                    updatedByUid: _currentUser?.uid ?? '-',
+                  );
+                } else {
+                  await _dbHelper.setInitialStock(
+                    date: DateTime.now(),
+                    filledStock: result['stock'] ?? 0,
+                    updatedByUid: _currentUser?.uid ?? '-',
+                  );
+                }
+                setState(() {});
+              }
+            },
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            label: 'Profil',
+          const SizedBox(height: 8),
+          Expanded(
+            child: Stack(
+              children: [
+                _isOnline
+                    ? OrdersStreamWidget(
+                        onStartDelivery: (order) async {
+                          await _firestoreService.updateOrderStatus(order.firestoreId!, OrderStatus.inDelivery);
+                        },
+                        onCompleteDelivery: (order) async {
+                          await _firestoreService.completeOrderTransaction(order);
+                          // Hapus pemanggilan recordSale agar tidak double increment
+                        },
+                      )
+                    : OrdersLocalWidget(
+                        orders: _localOrders,
+                        onStartDelivery: (order) async {
+                          await _dbHelper.updateOrderStatus(order.id!, OrderStatus.inDelivery);
+                          await _loadLocalOrders();
+                        },
+                        onCompleteDelivery: (order) async {
+                          await _dbHelper.updateOrderStatus(order.id!, OrderStatus.delivered, setDeliveredTime: true);
+                          final stock = await _dbHelper.getDailyStock(DateTime.now());
+                          final newStock = (stock?.initialStock ?? 0) - (order.gallonQuantity ?? 0);
+                          await _dbHelper.setInitialStock(
+                            date: DateTime.now(),
+                            filledStock: newStock < 0 ? 0 : newStock,
+                            updatedByUid: _currentUser?.uid ?? '-',
+                          );
+                          final today = DateTime.now();
+                          final oldSale = await _dbHelper.getDailySaleByDate(today);
+                          final newQty = (oldSale?.quantity ?? 0) + (order.gallonQuantity ?? 0);
+                          final newCount = (oldSale?.deliveryCount ?? 0) + 1;
+                          await _dbHelper.upsertDailySummary(
+                            DailySale(
+                              date: today,
+                              deliveryCount: newCount,
+                              quantity: newQty,
+                              isSynced: false,
+                              employeeUid: _currentUser?.uid,
+                            ),
+                          );
+                          await _loadLocalOrders();
+                        },
+                      ),
+                // FloatingActionButton.extended dihapus agar tidak ada tombol ganda
+                // Positioned(
+                //   bottom: 16,
+                //   right: 16,
+                //   child: FloatingActionButton.extended(
+                //     icon: const Icon(Icons.add),
+                //     label: const Text('Catat Pesanan'),
+                //     onPressed: () async {
+                //       showDialog(
+                //         context: context,
+                //         builder: (ctx) => AddOrderDialog(
+                //           onSubmit: ({
+                //             required String customerName,
+                //             required int gallonQuantity,
+                //             String? otherItems,
+                //             String? address,
+                //             String? phoneNumber,
+                //           }) async {
+                //             final newOrder = Order(
+                //               customerName: customerName,
+                //               gallonQuantity: gallonQuantity,
+                //               otherItems: otherItems,
+                //               address: address,
+                //               phoneNumber: phoneNumber,
+                //               status: OrderStatus.pending,
+                //               createdAt: DateTime.now(),
+                //               employeeUid: _currentUser?.uid,
+                //               isSynced: _isOnline, // Jika online, langsung sync
+                //             );
+                //             if (_isOnline) {
+                //               await _firestoreService.addOrder(newOrder);
+                //             } else {
+                //               await _dbHelper.insertOrder(newOrder);
+                //               await _loadLocalOrders();
+                //             }
+                //             if (mounted) setState(() {});
+                //           },
+                //         ),
+                //       );
+                //     },
+                //   ),
+                // ),
+              ],
+            ),
           ),
         ],
+      ),
+      CustomerBook(isOnline: _isOnline),
+      ProfileSection(
+        user: _currentUser,
+        onLogout: () async {
+          // Tambahkan menu tambahan di sini
+          showModalBottomSheet(
+            context: context,
+            builder: (ctx) => Wrap(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.storage_outlined),
+                  title: const Text('Manajemen Data Lokal'),
+                  onTap: () {
+                    Navigator.pop(ctx); // Tutup bottom sheet
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalSalesManagementScreen()));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.logout, color: Colors.red),
+                  title: const Text('Logout', style: TextStyle(color: Colors.red)),
+                  onTap: () async {
+                    await _authService.signOut();
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    ];
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_selectedIndex == 0 ? 'Beranda' : _selectedIndex == 1 ? 'Pelanggan' : 'Profil'),
+        // HAPUS: Tombol pengaturan tanggal & reset di AppBar
+        // actions: [
+        //   if (_selectedIndex == 0)
+        //     IconButton(
+        //       icon: const Icon(Icons.today),
+        //       tooltip: 'Ubah Tanggal',
+        //       onPressed: _pickDateTime,
+        //     ),
+        //   if (_selectedIndex == 0 && _customDateTime != null)
+        //     IconButton(
+        //       icon: const Icon(Icons.refresh),
+        //       tooltip: 'Reset ke Hari Ini',
+        //       onPressed: () => setState(() => _customDateTime = null),
+        //     ),
+        // ],
+      ),
+      // Menggunakan IndexedStack agar state setiap halaman tetap terjaga
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _pages,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'),
+          BottomNavigationBarItem(icon: Icon(Icons.book), label: 'Pelanggan'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
+        ],
         currentIndex: _selectedIndex,
-        selectedItemColor: Theme.of(context).primaryColor,
         onTap: _onItemTapped,
       ),
+      floatingActionButton: _selectedIndex == 0
+          ? FloatingActionButton(
+              onPressed: _showAddOrderDialog,
+              child: const Icon(Icons.add),
+              tooltip: 'Catat Pesanan',
+            )
+          : null,
     );
   }
-}
 
-// Widget untuk konten Beranda Karyawan
-class KaryawanBerandaContent extends StatefulWidget {
-  final bool Function() getIsDailySyncing;
-  final Future<void> Function() performDailySummarySyncCallback;
+  // --- LOGIKA UNTUK MENAMPILKAN DIALOG ---
 
-  const KaryawanBerandaContent({
-    super.key,
-    required this.getIsDailySyncing,
-    required this.performDailySummarySyncCallback,
-  }); // Hapus const
-
-  @override
-  State<KaryawanBerandaContent> createState() => _KaryawanBerandaContentState();
-}
-
-class _KaryawanBerandaContentState extends State<KaryawanBerandaContent> {
-  @override
-  Widget build(BuildContext context) {
-    // Ambil nilai saat ini untuk ditampilkan dan di-log
-    // Akses _isSyncing dan _performSync dari _KaryawanHomeScreenState
-    // Ini bisa dilakukan dengan callback atau cara lain jika state management lebih canggih
-    // Untuk sekarang, kita asumsikan parentState sudah memiliki data terbaru.
-
-    return SingleChildScrollView(
-      // Hapus RefreshIndicator, biarkan SingleChildScrollView
-      // physics: const AlwaysScrollableScrollPhysics(), // Bisa dihapus atau diganti jika tidak ingin selalu bisa scroll
-      // physics: BouncingScrollPhysics(), // Atau ClampingScrollPhysics()
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch, // Melebarkan tombol
-          children: [
-            ElevatedButton.icon(
-              icon: const Icon(Icons.add_chart),
-              label: const Text('Input Penjualan Harian'),
-              onPressed: () {
-                Navigator.push(
-                  context, MaterialPageRoute(builder: (context) => const DailySalesInputScreen()),
-                ).then((result) async {
-                  // Jadikan callback ini async
-                  if (result is Map && result['saved'] == true) {
-                    print(
-                      "[KaryawanBerandaContent] DailySalesInputScreen returned: $result.",
-                    );
-                    // Jika perlu refresh UI di sini setelah input, setState akan melakukannya.
-                    // Jika ada data yang perlu dimuat ulang dari parent, parent yang harus menanganinya.
-                    if (mounted) setState(() {});
-                    print(
-                      "[KaryawanBerandaContent] Stats refreshed via onRefreshRequested.",
-                    );
-
-                    // Jika DailySalesInputScreen mengindikasikan untuk navigasi ke Beranda
-                    // (meskipun kita sudah di Beranda), memanggil _onItemTapped(0)
-                    // akan memastikan state KaryawanHomeScreen (seperti _currentScreenWidget) konsisten
-                    // dan memicu setState, yang akan me-rebuild.
-                    // Ini mungkin sedikit redundan jika onRefreshRequested sudah cukup, tapi tidak berbahaya.
-                    if (result['navigateToBeranda'] == true) {
-                      final parentState = context
-                          .findAncestorStateOfType<_KaryawanHomeScreenState>();
-                      if (parentState != null) {
-                        print(
-                          "[KaryawanBerandaContent] Ensuring Beranda tab is active by calling _onItemTapped(0).",
-                        );
-                        parentState._onItemTapped(0);
-                      }
-                    }
-                  }
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16), // Tambah padding vertikal
-                textStyle: const TextStyle(fontSize: 16), // Ukuran teks tombol
-              ),
-            ),
-            const SizedBox(height: 20),
-            widget.getIsDailySyncing()
-                ? const Column(
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 8), // Perkecil jarak
-                      Text("Sinkronisasi data pengantaran..."), // Ubah teks loading
-                    ],
-                  )
-                : ElevatedButton.icon(
-                    icon: const Icon(Icons.cloud_sync_outlined),
-                    label: const Text('Sinkronkan Data Pengantaran'), // Ubah label tombol
-                    onPressed: widget.performDailySummarySyncCallback, 
-                    style: ElevatedButton.styleFrom(
-                      foregroundColor: Colors.white, // Tambahkan ini untuk warna teks putih
-                      backgroundColor: Colors.teal,
-                      padding: const EdgeInsets.symmetric(vertical: 16), // Padding sama dengan tombol input
-                      textStyle: const TextStyle(fontSize: 16),
-                    ),
-                  ),
-          ],
-        ),
+  void _showAddOrderDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AddOrderDialog(
+        onSubmit: ({
+          required String customerName,
+          required int gallonQuantity,
+          String? otherItems,
+          String? address,
+          String? phoneNumber,
+          required DateTime date,
+        }) async {
+          // Gabungkan tanggal dari dialog dengan waktu saat ini jika jam 00:00
+          DateTime finalDateTime = date;
+          if (date.hour == 0 && date.minute == 0) {
+            final now = DateTime.now();
+            finalDateTime = DateTime(date.year, date.month, date.day, now.hour, now.minute, now.second);
+          }
+          final newOrder = Order(
+            customerName: customerName,
+            gallonQuantity: gallonQuantity,
+            otherItems: otherItems,
+            address: address,
+            phoneNumber: phoneNumber,
+            status: OrderStatus.pending,
+            createdAt: finalDateTime,
+            employeeUid: _currentUser?.uid,
+            isSynced: _isOnline, // Jika online, langsung sync
+          );
+          if (_isOnline) {
+            await _firestoreService.addOrder(newOrder);
+          } else {
+            await _dbHelper.insertOrder(newOrder);
+            await _loadLocalOrders();
+          }
+          if (mounted) setState(() {});
+        },
       ),
-    ); // Hapus satu tanda kurung penutup yang berlebih
+    );
   }
 }

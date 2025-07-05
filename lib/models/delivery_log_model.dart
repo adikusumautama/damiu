@@ -3,6 +3,7 @@ class DeliveryLogItem {
   final int? id;
   final DateTime timestamp; // Tanggal dan Waktu pengantaran
   final int gallons;
+  final int emptyGallonsReturned;
   final String employeeUid;
   bool isSummarized; // Status apakah log ini sudah termasuk dalam ringkasan harian
   final bool isNoDeliveryMarker; // Penanda jika ini adalah entri "tidak ada pengantaran"
@@ -11,6 +12,7 @@ class DeliveryLogItem {
     this.id,
     required this.timestamp,
     required this.gallons,
+    this.emptyGallonsReturned = 0,
     required this.employeeUid,
     this.isSummarized = false,
     this.isNoDeliveryMarker = false, // Default ke false
@@ -21,6 +23,7 @@ class DeliveryLogItem {
       'id': id,
       'timestamp': timestamp.toIso8601String(),
       'gallons': gallons,
+      'empty_gallons_returned': emptyGallonsReturned,
       'employee_uid': employeeUid,
       'is_summarized': isSummarized ? 1 : 0,
       'is_no_delivery_marker': isNoDeliveryMarker ? 1 : 0,
@@ -32,6 +35,7 @@ class DeliveryLogItem {
       id: map['id'] as int?,
       timestamp: DateTime.parse(map['timestamp'] as String),
       gallons: (map['gallons'] as num).toInt(), // Handle double dari DB
+      emptyGallonsReturned: (map['empty_gallons_returned'] as num?)?.toInt() ?? 0,
       employeeUid: map['employee_uid'] as String,
       isSummarized: map['is_summarized'] == 1,
       isNoDeliveryMarker: map['is_no_delivery_marker'] == 1,

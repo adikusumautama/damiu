@@ -1,41 +1,61 @@
 // lib/services/prediction_service.dart
-import 'package:damiu/models/linear_regression_model.dart';
+import 'dart:convert'; // Untuk jsonDecode
+import 'package:http/http.dart' as http;
+import 'package:damiu/models/prediction_result_model.dart'; // Import model prediksi baru
 
 class PredictionService {
-  // Input data: List<Map<String, double>> dengan keys 'day' (x) dan 'quantity' (y)
-  LinearRegressionModel calculateLinearRegression(List<Map<String, double>> data) {
-    if (data.length < 2) {
-      // Tidak cukup data untuk regresi yang berarti
-      print("Peringatan: Data tidak cukup untuk regresi linier (<2 poin). Mengembalikan model default.");
-      return LinearRegressionModel(slope: 0, intercept: 0);
+  // URL API Backend Anda (ganti dengan URL sebenarnya)
+  // final String _apiBaseUrl = 'http://127.0.0.1:5000/predict'; // SALAH jika dari emulator/HP
+  // Gunakan IP ini jika menjalankan Flutter di Emulator Android dan Flask di PC yang sama
+  // final String _apiBaseUrl = 'http://10.0.2.2:5000/predict';
+  // Gunakan IP lokal PC Anda jika menjalankan Flutter di HP pada WiFi yang sama (ganti dengan IP Anda)
+  final String _apiBaseUrl = 'http://192.168.100.72:5000/predict'; // GANTI DENGAN IP LOKAL PC ANDA
+
+  // Fungsi untuk mendapatkan prediksi dari API
+  // `daysToPredict` adalah berapa hari ke depan yang ingin diprediksi
+  Future<ApiPredictionResult> getPredictionsFromApi({
+    // daysToPredict parameter diabaikan oleh API Flask yang baru
+    // int daysToPredict = 1, // Parameter ini tidak lagi relevan untuk API Flask yang diubah
+    String dataSource = 'firestore', // Tambahkan parameter dataSource, default ke firestore
+  }) async {
+    try {
+      // Siapkan body request (sesuaikan dengan kebutuhan API Anda)
+      final requestBody = jsonEncode({
+        'data_source': dataSource, // Kirim parameter dataSource
+      });
+
+      final response = await http.post(
+        Uri.parse(_apiBaseUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: requestBody,
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        return ApiPredictionResult.fromJson(data);
+      } else {
+        // Handle non-200 status codes, which might contain an error message
+        try {
+          final Map<String, dynamic> errorData = jsonDecode(response.body);
+          return ApiPredictionResult(
+            success: false,
+            errorMessage: errorData['error'] ?? 'Unknown API error (Status: ${response.statusCode})',
+          );
+        } catch (e) { // Tangani jika respons bukan JSON atau formatnya tidak sesuai
+          return ApiPredictionResult(
+            success: false,
+            errorMessage: 'Failed to parse error response (Status: ${response.statusCode}): $e',
+          );
+        }
+      }
+    } catch (e) {
+      // Tangani error koneksi atau lainnya
+      print('Error calling prediction API: $e');
+      // Menggunakan ApiPredictionResult dengan success: false untuk error koneksi
+      return ApiPredictionResult(
+        success: false,
+        errorMessage: 'Terjadi kesalahan koneksi: $e',
+      );
     }
-
-    double sumX = 0;
-    double sumY = 0;
-    double sumXY = 0;
-    double sumX2 = 0;
-    int n = data.length;
-
-    for (var point in data) {
-      // Pastikan key ada dan tidak null sebelum diakses
-      double x = point['day'] ?? 0; // Default ke 0 jika null, idealnya data sudah bersih
-      double y = point['quantity'] ?? 0;
-      sumX += x;
-      sumY += y;
-      sumXY += x * y;
-      sumX2 += x * x;
-    }
-
-    double denominator = (n * sumX2) - (sumX * sumX);
-
-    if (denominator == 0) {
-      print("Peringatan: Denominator dalam perhitungan slope adalah nol. Cek variasi data X.");
-      double averageY = n > 0 ? sumY / n : 0;
-      return LinearRegressionModel(slope: 0, intercept: averageY);
-    }
-
-    double slope = (n * sumXY - sumX * sumY) / denominator;
-    double intercept = (sumY - slope * sumX) / n;
-    return LinearRegressionModel(slope: slope, intercept: intercept);
   }
 }

@@ -5,86 +5,55 @@ service cloud.firestore {
 
     // Koleksi Pengguna (users)
     match /users/{userId} {
-      // Pengguna bisa membuat akun (profil) sendiri ATAU
-      // Admin bisa membuat akun pengguna baru mana pun
       allow create: if request.auth != null && (request.auth.uid == userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
-
-      // Pengguna bisa membaca dan memperbarui profilnya sendiri
-      // Admin bisa membaca dan memperbarui profil pengguna mana pun
-      allow read, update: if request.auth != null &&
-                          (request.auth.uid == userId ||
-                           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
-
-      // Hanya admin yang bisa menghapus akun pengguna
-      allow delete: if request.auth != null &&
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow read, update: if request.auth != null && (request.auth.uid == userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      allow delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     // Koleksi Pesanan (orders)
     match /orders/{orderId} {
-      // Pelanggan bisa membuat pesanan baru
-      // Pastikan customerId di pesanan baru adalah UID pelanggan itu sendiri
-      allow create: if request.auth != null &&
-                       request.resource.data.customerId == request.auth.uid &&
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'pelanggan';
+      allow read, write: if request.auth != null && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan' || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      allow delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
 
-      // Pelanggan bisa membaca pesanannya sendiri
-      // Karyawan dan Admin bisa membaca semua pesanan
+    // Aturan untuk data pelanggan (customers)
+    match /customers/{customerId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // --- PERUBAHAN DI BLOK INI ---
+    // Koleksi Log Galon Kembali (returned_gallons_log)
+    match /returned_gallons_log/{logId} {
+      // Karyawan bisa membuat log baru DAN membaca log hari ini untuk statistik.
+      allow read, create: if request.auth != null &&
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan';
+      
+      // Admin juga bisa membaca semua log untuk laporan atau audit
       allow read: if request.auth != null &&
-                     ( (resource.data.customerId == request.auth.uid && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'pelanggan') ||
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan' ||
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' );
-
-      // Karyawan dan Admin bisa memperbarui pesanan (misalnya status)
-      // Pelanggan tidak bisa update pesanan setelah dibuat (sesuaikan jika perlu)
-      allow update: if request.auth != null &&
-                       (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan' ||
-                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
-      // Contoh: Karyawan hanya boleh update field 'status'
-      // allow update: if request.auth != null &&
-      //                  (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan' &&
-      //                   request.resource.data.keys().hasOnly(['status'])) || // Hanya field status yang boleh diubah karyawan
-      //                  get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-
-
-      // Hanya admin yang bisa menghapus pesanan
-      allow delete: if request.auth != null &&
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+                     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
-
-    // Aturan untuk data pelanggan yang bisa diakses karyawan (jika terpisah dari /users)
-    // Misalnya, jika ada koleksi /customer_details/{customerId}
-    match /customer_details/{customerId} { // Sesuaikan nama koleksi jika berbeda
-        // Karyawan dan Admin bisa membaca detail pelanggan
-        allow read: if request.auth != null &&
-                       (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan' ||
-                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
-        // Admin bisa menulis/menghapus detail pelanggan
-        allow write: if request.auth != null &&
-                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
+    // --- AKHIR PERUBAHAN ---
 
     // Koleksi Penjualan Harian (daily_sales)
     match /daily_sales/{saleId} {
-      // Admin bisa membaca data penjualan untuk dashboard dan prediksi
-      allow read, delete: if request.auth != null && 
-                             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-      // Karyawan bisa membuat data penjualan (via sync) dan memperbarui status synced
-      allow write: if request.auth != null && 
-                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan';
+      allow read, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan';
     }
 
     // Koleksi Metadata Sinkronisasi Harian (daily_sync_metadata)
     match /daily_sync_metadata/{dateDocId} {
-      // Admin bisa membaca metadata sinkronisasi
-      // Admin juga bisa menghapus metadata sinkronisasi
       allow read, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-      // Karyawan bisa membuat/memperbarui metadata sinkronisasi
       allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan';
     }
 
+    // Koleksi Stok Galon Harian (daily_stock_levels)
+    match /daily_stock_levels/{stockDateId} {
+      allow read: if request.auth != null && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan' || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      allow create, update: if request.auth != null && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan' || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      allow delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
     // Aturan default: tolak semua akses ke koleksi lain jika tidak ada aturan spesifik
-    // Ini penting untuk keamanan
     match /{document=**} {
       allow read, write: if false;
     }
