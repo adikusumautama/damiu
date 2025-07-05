@@ -72,7 +72,7 @@ class Customer {
       'name': name,
       'address': address,
       'phone_number': phoneNumber,
-      'created_at': createdAt,
+      'created_at': Timestamp.fromDate(createdAt),
     };
   }
 
