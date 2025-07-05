@@ -10,11 +10,9 @@ import 'package:damiu/models/user_model.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/services/sync_service.dart';
+import 'package:damiu/models/order_model.dart'; // <-- PERBAIKAN: Tambahkan impor ini
 import 'widgets/edit_customer_dialog.dart';
 
-// ======================================================================
-// PERBAIKAN: Controller disesuaikan dengan service dan helper yang baru
-// ======================================================================
 
 class LocalSalesManagementController extends ChangeNotifier {
   final DatabaseHelper _dbHelper = DatabaseHelper();
@@ -59,13 +57,11 @@ class LocalSalesManagementController extends ChangeNotifier {
     });
   }
 
-  // --- PERBAIKAN: Menggunakan satu listener yang sudah kita buat di SyncService ---
   void _updateConnectionStatus(ConnectivityResult result) async {
     final online = result != ConnectivityResult.none;
     if (online && !_isOnline) {
       await _syncService.syncAllData();
       _firestoreChangesListener?.cancel();
-      // Memanggil satu listener terpusat
       _firestoreChangesListener = _syncService.listenToFirestoreChanges();
     } else if (!online && _isOnline) {
       _firestoreChangesListener?.cancel();
@@ -77,9 +73,8 @@ class LocalSalesManagementController extends ChangeNotifier {
   Future<void> refreshAllData() async {
     isLoading = true;
     notifyListeners();
-    // Memanggil semua fungsi pemuatan data secara bersamaan
     await Future.wait([
-      _loadLocalOrdersAsLogs(), // Diganti untuk menggunakan tabel 'orders'
+      _loadLocalOrdersAsLogs(),
       _loadLocalStockData(),
       _loadLocalCustomers(),
     ]);
@@ -87,9 +82,7 @@ class LocalSalesManagementController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- PERBAIKAN: Log pengantaran sekarang dibaca dari tabel 'orders' ---
   Future<void> _loadLocalOrdersAsLogs() async {
-    // Menggunakan data pesanan sebagai pengganti log pengiriman yang usang
     final orders = await _dbHelper.getTodaysOrders();
     localDeliveryLogs = orders.map((order) => DeliveryLogItem(
       id: order.id,
@@ -102,7 +95,6 @@ class LocalSalesManagementController extends ChangeNotifier {
     totalGallonsInLogs = localDeliveryLogs.fold(0, (sum, log) => sum + log.gallons);
     totalLogs = localDeliveryLogs.where((log) => log.gallons > 0).length;
 
-    // Muat nama karyawan jika belum ada
     for (var log in localDeliveryLogs) {
       if (!employeeNames.containsKey(log.employeeUid)) {
         employeeNames[log.employeeUid] = await getEmployeeName(log.employeeUid);
@@ -112,8 +104,6 @@ class LocalSalesManagementController extends ChangeNotifier {
   }
 
   Future<void> _loadLocalStockData() async {
-    // Implementasi ini bergantung pada apakah Anda menyimpan semua stok lokal atau hanya per hari.
-    // Diasumsikan kita ingin melihat stok hari ini.
     final stock = await _dbHelper.getDailyStock(DateTime.now());
     localStockData = stock != null ? [stock] : [];
     notifyListeners();
@@ -133,10 +123,6 @@ class LocalSalesManagementController extends ChangeNotifier {
     employeeNames[employeeUid] = name;
     return name;
   }
-
-  // --- PERBAIKAN: Fungsi-fungsi usang dihapus ---
-  // Fungsi deleteLog, deleteAllLogs, deleteSummarizedLogs dihapus karena tabel 'delivery_log' tidak lagi menjadi fokus utama.
-  // Manajemen sekarang dilakukan melalui data 'orders'.
 
   Future<void> showEditCustomerDialog(Customer customer) async {
     if (context == null) return;
@@ -159,7 +145,4 @@ class LocalSalesManagementController extends ChangeNotifier {
       }
     }
   }
-
-  // Fungsi-fungsi lain yang memanggil metode yang sudah dihapus juga dihilangkan
-  // untuk menjaga controller tetap bersih dan fungsional.
 }

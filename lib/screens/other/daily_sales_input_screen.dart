@@ -1,6 +1,6 @@
 // lib/screens/other/daily_sales_input_screen.dart
 
-import 'package:damiu/models/delivery_log_model.dart';
+import 'package:damiu/models/order_model.dart'; // PERBAIKAN: Menggunakan OrderModel
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +16,7 @@ class DailySalesInputScreen extends StatefulWidget {
 class _DailySalesInputScreenState extends State<DailySalesInputScreen> {
   final _formKey = GlobalKey<FormState>();
   final _gallonQuantityController = TextEditingController();
+  final _customerNameController = TextEditingController(); // Tambahan untuk nama pelanggan
   bool _isLoading = false;
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final AuthService _authService = AuthService();
@@ -23,10 +24,12 @@ class _DailySalesInputScreenState extends State<DailySalesInputScreen> {
   @override
   void dispose() {
     _gallonQuantityController.dispose();
+    _customerNameController.dispose();
     super.dispose();
   }
 
-  Future<void> _saveDeliveryLog() async {
+  // --- PERBAIKAN: Logika diubah dari mencatat log menjadi membuat pesanan ---
+  Future<void> _saveDirectOrder() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
@@ -43,25 +46,28 @@ class _DailySalesInputScreenState extends State<DailySalesInputScreen> {
         return;
       }
 
-      final logItem = DeliveryLogItem(
-        timestamp: DateTime.now(),
-        gallons: int.parse(_gallonQuantityController.text),
-        emptyGallonsReturned: 0, // Ini adalah log pengeluaran, jadi galon kembali 0
+      // Membuat objek Order, bukan DeliveryLogItem
+      final newOrder = Order(
+        customerName: _customerNameController.text.isNotEmpty ? _customerNameController.text : 'Pelanggan Langsung',
+        gallonQuantity: int.parse(_gallonQuantityController.text),
+        status: OrderStatus.pending, // Status awal adalah pending
+        createdAt: DateTime.now(),
         employeeUid: employeeUid,
+        isSynced: false, // Disimpan lokal terlebih dahulu
       );
 
       try {
-        await _dbHelper.insertDeliveryLog(logItem);
+        await _dbHelper.insertOrder(newOrder); // Menggunakan insertOrder
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Log pengantaran berhasil disimpan!')),
+            const SnackBar(content: Text('Pesanan langsung berhasil disimpan!')),
           );
           Navigator.pop(context, true);
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Gagal menyimpan log: $e')),
+            SnackBar(content: Text('Gagal menyimpan pesanan: $e')),
           );
         }
       } finally {
@@ -78,7 +84,7 @@ class _DailySalesInputScreenState extends State<DailySalesInputScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Input Penjualan/Pengantaran'),
+        title: const Text('Input Pesanan Langsung'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -88,16 +94,25 @@ class _DailySalesInputScreenState extends State<DailySalesInputScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Catat jumlah galon yang keluar untuk diantar.',
+                'Catat pesanan yang terjadi secara langsung (tanpa melalui daftar pesanan).',
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
+               TextFormField(
+                controller: _customerNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Nama Pelanggan (Opsional)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.person),
+                ),
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _gallonQuantityController,
                 autofocus: true,
                 decoration: const InputDecoration(
-                  labelText: 'Jumlah Galon Keluar',
+                  labelText: 'Jumlah Galon',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.local_drink_outlined),
                 ),
@@ -118,8 +133,8 @@ class _DailySalesInputScreenState extends State<DailySalesInputScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : ElevatedButton.icon(
                       icon: const Icon(Icons.save_outlined),
-                      label: const Text('Simpan Log'),
-                      onPressed: _saveDeliveryLog,
+                      label: const Text('Simpan Pesanan'),
+                      onPressed: _saveDirectOrder,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         textStyle: const TextStyle(fontSize: 16),
