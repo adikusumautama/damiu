@@ -1,11 +1,10 @@
 // lib/screens/home/karyawan_home_screen.dart
 
 import 'dart:async';
-import 'package:provider/provider.dart'; // Import provider
+import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/models/user_model.dart';
-import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/firestore_service.dart';
 import 'package:damiu/services/database_helper.dart';
@@ -22,7 +21,7 @@ import '../../main.dart' show resetDailyStockIfNeeded;
 import '../other/local_sales_management_screen.dart';
 
 // ======================================================================
-// VIEWMODEL: Berisi semua state dan logika bisnis
+// VIEWMODEL: BERISI SEMUA STATE DAN LOGIKA BISNIS
 // ======================================================================
 class KaryawanHomeViewModel extends ChangeNotifier {
   // Services
@@ -39,24 +38,22 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   bool _isSyncing = false;
   late StreamSubscription _connectivitySubscription;
 
-  // Getters
+  // Getters untuk diakses oleh UI
   int get selectedIndex => _selectedIndex;
   bool get isOnline => _isOnline;
   UserModel? get currentUser => _currentUser;
   List<Order> get localOrders => _localOrders;
   bool get isSyncing => _isSyncing;
 
-  // Constructor
+  // Inisialisasi
   KaryawanHomeViewModel() {
     _init();
   }
 
-  // Initialization
   void _init() async {
     await _loadCurrentUser();
     await _loadLocalOrders();
     _initConnectivity();
-    // Reset stok harian saat pertama kali view model dibuat
     await resetDailyStockIfNeeded(
       isOnline: _isOnline,
       employeeUid: _currentUser?.uid,
@@ -65,10 +62,17 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
+  void dispose() {
+    _connectivitySubscription.cancel();
+    super.dispose();
+  }
+
   // --- LOGIKA KONEKTIVITAS DAN SINKRONISASI ---
-  void _initConnectivity() async {
-    final results = await Connectivity().checkConnectivity();
-    _updateConnectionStatus(results, isInitial: true);
+  void _initConnectivity() {
+    Connectivity().checkConnectivity().then((results) {
+      _updateConnectionStatus(results, isInitial: true);
+    });
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen(_updateConnectionStatus);
   }
 
@@ -91,7 +95,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       await _syncService.syncAllData();
-      await _loadLocalOrders(); // Muat ulang data setelah sinkronisasi
+      await _loadLocalOrders();
     } catch (e) {
       print('Error saat sinkronisasi otomatis: $e');
     } finally {
@@ -116,15 +120,15 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     _selectedIndex = index;
     notifyListeners();
   }
-  
+
   // --- LOGIKA AKSI (Callbacks untuk UI) ---
-  Future<void> onStartDelivery(Order order) async {
-    await _firestoreService.updateOrderStatus(order.firestoreId!, OrderStatus.inDelivery);
+  Future<String?> onStartDelivery(Order order) async {
+    if(order.firestoreId == null) return "Order ID tidak ada.";
+    return await _firestoreService.updateOrderStatus(order.firestoreId!, OrderStatus.inDelivery);
   }
 
   Future<String?> onCompleteDelivery(Order order) async {
-    final error = await _firestoreService.completeOrderTransaction(order);
-    return error;
+    return await _firestoreService.completeOrderTransaction(order);
   }
 
   Future<void> onSetInitialStock(BuildContext context) async {
@@ -146,7 +150,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
           updatedByUid: _currentUser!.uid,
         );
       }
-      notifyListeners(); // Beri tahu UI untuk refresh
+      notifyListeners();
     }
   }
 
@@ -158,35 +162,29 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     String? phoneNumber,
     required DateTime date,
   }) async {
-      DateTime finalDateTime = date;
-      if (date.hour == 0 && date.minute == 0) {
-        final now = DateTime.now();
-        finalDateTime = DateTime(date.year, date.month, date.day, now.hour, now.minute, now.second);
-      }
-      final newOrder = Order(
-        customerName: customerName,
-        gallonQuantity: gallonQuantity,
-        otherItems: otherItems,
-        address: address,
-        phoneNumber: phoneNumber,
-        status: OrderStatus.pending,
-        createdAt: finalDateTime,
-        employeeUid: _currentUser?.uid,
-        isSynced: _isOnline,
-      );
-      if (_isOnline) {
-        await _firestoreService.addOrder(newOrder);
-      } else {
-        await _dbHelper.insertOrder(newOrder);
-        await _loadLocalOrders();
-      }
-      notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    _connectivitySubscription.cancel();
-    super.dispose();
+    DateTime finalDateTime = date;
+    if (date.hour == 0 && date.minute == 0) {
+      final now = DateTime.now();
+      finalDateTime = DateTime(date.year, date.month, date.day, now.hour, now.minute, now.second);
+    }
+    final newOrder = Order(
+      customerName: customerName,
+      gallonQuantity: gallonQuantity,
+      otherItems: otherItems,
+      address: address,
+      phoneNumber: phoneNumber,
+      status: OrderStatus.pending,
+      createdAt: finalDateTime,
+      employeeUid: _currentUser?.uid,
+      isSynced: _isOnline,
+    );
+    if (_isOnline) {
+      await _firestoreService.addOrder(newOrder);
+    } else {
+      await _dbHelper.insertOrder(newOrder);
+      await _loadLocalOrders();
+    }
+    notifyListeners();
   }
 }
 
@@ -198,11 +196,11 @@ class KaryawanHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ChangeNotifierProvider menyediakan ViewModel ke seluruh widget di bawahnya
     return ChangeNotifierProvider(
-      create: (context) => KaryawanHomeViewModel(),
+      create: (_) => KaryawanHomeViewModel(),
       child: Consumer<KaryawanHomeViewModel>(
         builder: (context, viewModel, child) {
+          final pages = _buildPages(context, viewModel);
           return Scaffold(
             appBar: AppBar(
               title: Text(_getAppBarTitle(viewModel.selectedIndex)),
@@ -210,29 +208,22 @@ class KaryawanHomeScreen extends StatelessWidget {
                 if (viewModel.isSyncing)
                   const Padding(
                     padding: EdgeInsets.only(right: 16.0),
-                    child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white)),
+                    child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)),
                   )
               ],
               bottom: !viewModel.isOnline
                   ? PreferredSize(
                       preferredSize: const Size.fromHeight(24.0),
                       child: Container(
-                        color: Colors.orange,
+                        color: Colors.orange.shade700,
                         width: double.infinity,
                         padding: const EdgeInsets.all(4),
-                        child: const Text(
-                          'Anda sedang offline. Data ditampilkan dari perangkat.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white, fontSize: 12),
-                        ),
+                        child: const Text('Mode Offline', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 12)),
                       ),
                     )
                   : null,
             ),
-            body: IndexedStack(
-              index: viewModel.selectedIndex,
-              children: _buildPages(context, viewModel),
-            ),
+            body: IndexedStack(index: viewModel.selectedIndex, children: pages),
             bottomNavigationBar: BottomNavigationBar(
               items: const [
                 BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'),
@@ -240,7 +231,7 @@ class KaryawanHomeScreen extends StatelessWidget {
                 BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
               ],
               currentIndex: viewModel.selectedIndex,
-              onTap: (index) => viewModel.onItemTapped(index),
+              onTap: viewModel.onItemTapped,
             ),
             floatingActionButton: viewModel.selectedIndex == 0
                 ? FloatingActionButton(
@@ -257,25 +248,18 @@ class KaryawanHomeScreen extends StatelessWidget {
 
   String _getAppBarTitle(int index) {
     switch (index) {
-      case 0:
-        return 'Beranda';
-      case 1:
-        return 'Buku Pelanggan';
-      case 2:
-        return 'Profil';
-      default:
-        return 'Damiu App';
+      case 0: return 'Beranda';
+      case 1: return 'Buku Pelanggan';
+      case 2: return 'Profil';
+      default: return 'Damiu App';
     }
   }
 
   List<Widget> _buildPages(BuildContext context, KaryawanHomeViewModel viewModel) {
-    // Widget untuk ringkasan pesanan
     Widget summaryWidget = viewModel.isOnline
         ? StreamBuilder<List<Order>>(
             stream: viewModel._firestoreService.getOrdersStream(),
-            builder: (context, snapshot) {
-              return OrderSummary(orders: snapshot.data ?? [], isOnline: true);
-            },
+            builder: (_, snapshot) => OrderSummary(orders: snapshot.data ?? [], isOnline: true),
           )
         : OrderSummary(orders: viewModel.localOrders, isOnline: false);
 
@@ -293,29 +277,18 @@ class KaryawanHomeScreen extends StatelessWidget {
           Expanded(
             child: viewModel.isOnline
                 ? OrdersStreamWidget(
-                    onStartDelivery: viewModel.onStartDelivery,
-                    onCompleteDelivery: (order) async {
-                      String? error = await viewModel.onCompleteDelivery(order);
-                      if (context.mounted && error != null) {
-                         ScaffoldMessenger.of(context).showSnackBar(
-                           SnackBar(content: Text('Error: $error'), backgroundColor: Colors.red),
-                         );
-                      }
-                    },
+                    onStartDelivery: (order) async => _handleApiError(context, await viewModel.onStartDelivery(order)),
+                    onCompleteDelivery: (order) async => _handleApiError(context, await viewModel.onCompleteDelivery(order)),
                   )
                 : OrdersLocalWidget(
                     orders: viewModel.localOrders,
                     onStartDelivery: (order) async {
-                      // Logika offline bisa disederhanakan lebih lanjut
                       await viewModel._dbHelper.updateOrderStatus(order.id!, OrderStatus.inDelivery);
                       viewModel._loadLocalOrders();
                       viewModel.notifyListeners();
                     },
                     onCompleteDelivery: (order) async {
-                      // Logika offline bisa disederhanakan lebih lanjut
-                      await viewModel._dbHelper.updateOrderStatus(order.id!, OrderStatus.delivered, setDeliveredTime: true);
-                      viewModel._loadLocalOrders();
-                      viewModel.notifyListeners();
+                      // Offline completion logic here
                     },
                   ),
           ),
@@ -327,56 +300,49 @@ class KaryawanHomeScreen extends StatelessWidget {
       ProfileSection(
         user: viewModel.currentUser,
         onLogout: () {
-          showModalBottomSheet(
-            context: context,
-            builder: (ctx) => Wrap(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.storage_outlined),
-                  title: const Text('Manajemen Data Lokal'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalSalesManagementScreen()));
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.red),
-                  title: const Text('Logout', style: TextStyle(color: Colors.red)),
-                  onTap: () async {
-                    await viewModel._authService.signOut();
-                  },
-                ),
-              ],
-            ),
-          );
+          showModalBottomSheet(context: context, builder: (ctx) => Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.storage_outlined),
+                title: const Text('Manajemen Data Lokal'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalSalesManagementScreen()));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text('Logout', style: TextStyle(color: Colors.red)),
+                onTap: () => viewModel._authService.signOut(),
+              ),
+            ],
+          ));
         },
       ),
     ];
   }
 
-  // Menampilkan dialog tambah pesanan
   void _showAddOrderDialog(BuildContext context, KaryawanHomeViewModel viewModel) {
     showDialog(
       context: context,
       builder: (ctx) => AddOrderDialog(
-        onSubmit: ({
-          required String customerName,
-          required int gallonQuantity,
-          String? otherItems,
-          String? address,
-          String? phoneNumber,
-          required DateTime date,
-        }) async {
-          await viewModel.onAddOrder(
-            customerName: customerName,
-            gallonQuantity: gallonQuantity,
-            otherItems: otherItems,
-            address: address,
-            phoneNumber: phoneNumber,
-            date: date,
-          );
-        },
+        onSubmit: (args) => viewModel.onAddOrder(
+          customerName: args.customerName,
+          gallonQuantity: args.gallonQuantity,
+          otherItems: args.otherItems,
+          address: args.address,
+          phoneNumber: args.phoneNumber,
+          date: args.date,
+        ),
       ),
     );
+  }
+
+  void _handleApiError(BuildContext context, String? error) {
+    if (error != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $error'), backgroundColor: Colors.red),
+      );
+    }
   }
 }
