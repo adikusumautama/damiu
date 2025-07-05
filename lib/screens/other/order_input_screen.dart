@@ -4,9 +4,9 @@ import 'package:damiu/models/customer_model.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
-import 'package:damiu/services/firestore_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:collection/collection.dart';
 
 class OrderInputScreen extends StatefulWidget {
   const OrderInputScreen({super.key});
@@ -25,9 +25,9 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
 
   bool _isLoading = false;
   final DatabaseHelper _dbHelper = DatabaseHelper();
-  final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
   List<Customer> _allCustomers = [];
+  Customer? _selectedCustomer; // Untuk melacak pelanggan yang dipilih dari autocomplete
 
   @override
   void initState() {
@@ -36,9 +36,15 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
   }
 
   Future<void> _loadCustomers() async {
+    setState(() {
+      _isLoading = true;
+    });
     final customers = await _dbHelper.getAllCustomers();
     if (mounted) {
-      setState(() => _allCustomers = customers);
+      setState(() {
+        _allCustomers = customers;
+        _isLoading = false;
+      });
     }
   }
 
@@ -69,60 +75,62 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
         return;
       }
 
-      // 1. Simpan/update data pelanggan di database lokal dan Firestore
-      final newCustomer = Customer(
-        name: _customerNameController.text.trim(),
-        address: _addressController.text.trim().isNotEmpty
-            ? _addressController.text.trim()
-            : null,
-        phoneNumber: _phoneController.text.trim().isNotEmpty
-            ? _phoneController.text.trim()
-            : null,
-        createdAt: DateTime.now(),
-      );
-      // Kita tidak menunggu proses ini selesai agar UI tetap responsif
-      _dbHelper.upsertCustomer(newCustomer);
-      _firestoreService.upsertCustomer(newCustomer);
+      final customerName = _customerNameController.text.trim();
+      final address = _addressController.text.trim();
+      final phoneNumber = _phoneController.text.trim();
 
-      // 2. Buat objek pesanan untuk dikirim ke Firestore
+      // Cek apakah pelanggan sudah ada atau baru, berdasarkan nama
+      Customer? existingCustomer = _selectedCustomer != null && _selectedCustomer!.name.toLowerCase() == customerName.toLowerCase()
+          ? _selectedCustomer
+          : _allCustomers.firstWhereOrNull((c) => c.name.toLowerCase() == customerName.toLowerCase());
+
+      if (existingCustomer != null) {
+        // Pelanggan sudah ada, cek apakah ada perubahan data
+        if (existingCustomer.address != address || existingCustomer.phoneNumber != phoneNumber) {
+          final updatedCustomer = existingCustomer.copyWith(
+            address: address.isNotEmpty ? address : null,
+            phoneNumber: phoneNumber.isNotEmpty ? phoneNumber : null,
+            isSynced: false, // Tandai untuk disinkronkan
+          );
+          await _dbHelper.updateCustomer(updatedCustomer);
+        }
+      } else {
+        // Pelanggan baru, simpan ke database lokal
+        final newCustomer = Customer(
+          name: customerName,
+          address: address.isNotEmpty ? address : null,
+          phoneNumber: phoneNumber.isNotEmpty ? phoneNumber : null,
+          createdAt: DateTime.now(),
+          isSynced: false, // Tandai untuk disinkronkan
+        );
+        await _dbHelper.upsertCustomer(newCustomer);
+      }
+
+      // Buat objek pesanan untuk disimpan ke database lokal
       final newOrder = Order(
-        customerName: _customerNameController.text.trim(),
+        customerName: customerName,
         gallonQuantity: int.parse(_gallonQuantityController.text),
-        otherItems: _otherItemsController.text.trim().isNotEmpty
-            ? _otherItemsController.text.trim()
-            : null,
-        address: _addressController.text.trim().isNotEmpty
-            ? _addressController.text.trim()
-            : null,
-        phoneNumber: _phoneController.text.trim().isNotEmpty
-            ? _phoneController.text.trim()
-            : null,
+        otherItems: _otherItemsController.text.trim().isNotEmpty ? _otherItemsController.text.trim() : null,
+        address: address.isNotEmpty ? address : null,
+        phoneNumber: phoneNumber.isNotEmpty ? phoneNumber : null,
         status: OrderStatus.pending,
         createdAt: DateTime.now(),
         employeeUid: employeeUid,
+        isSynced: false, // Selalu false, karena akan disinkronkan oleh SyncService
       );
 
       try {
-        // 3. Kirim pesanan ke Firestore
-        final error = await _firestoreService.addOrder(newOrder);
-
+        // Simpan pesanan ke database lokal
+        await _dbHelper.insertOrder(newOrder);
         if (mounted) {
-          if (error != null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Gagal menyimpan pesanan ke server: $error')),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Pesanan berhasil dicatat!')),
-            );
-            Navigator.pop(context, true);
-          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Pesanan berhasil disimpan di perangkat! Akan disinkronkan nanti.')),
+          );
+          Navigator.pop(context, true); // Kirim sinyal bahwa ada perubahan
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Terjadi error: $e')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menyimpan data lokal: $e')));
         }
       } finally {
         if (mounted) {
@@ -168,6 +176,7 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
                   });
                 },
                 onSelected: (Customer selection) {
+                  setState(() => _selectedCustomer = selection);
                   _customerNameController.text = selection.name;
                   _addressController.text = selection.address ?? '';
                   _phoneController.text = selection.phoneNumber ?? '';
@@ -176,7 +185,12 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
                     TextEditingController fieldController,
                     FocusNode fieldFocusNode,
                     VoidCallback onFieldSubmitted) {
-                  _customerNameController.text = fieldController.text;
+                  // Sinkronisasi controller dari Autocomplete ke controller state
+                  if (_customerNameController.text != fieldController.text) {
+                    _customerNameController.text = fieldController.text;
+                    // Reset _selectedCustomer jika pengguna mengetik manual
+                    setState(() => _selectedCustomer = null);
+                  }
                   return TextFormField(
                     controller: fieldController,
                     focusNode: fieldFocusNode,

@@ -13,6 +13,7 @@ import 'package:damiu/models/user_model.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/services/sync_service.dart';
+import 'widgets/edit_customer_dialog.dart';
 
 class LocalSalesManagementController extends ChangeNotifier {
   final DatabaseHelper _dbHelper = DatabaseHelper();
@@ -243,8 +244,54 @@ class LocalSalesManagementController extends ChangeNotifier {
     }
   }
 
+  // ================= CRUD PELANGGAN =================
+  Future<void> deleteCustomer(int id) async {
+    if (context == null) return;
+    final bool confirm = await showDialog(
+          context: context!,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Konfirmasi Hapus'),
+            content: const Text('Anda yakin ingin menghapus pelanggan ini dari database lokal?'),
+            actions: [
+              TextButton(child: const Text('Batal'), onPressed: () => Navigator.of(ctx).pop(false)),
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('Hapus'),
+                onPressed: () => Navigator.of(ctx).pop(true),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (confirm) {
+      await _dbHelper.deleteCustomer(id);
+      await refreshAllData();
+    }
+  }
+
   Future<void> showEditStockDialog(DailyStock stock) async {
     // TODO: Implementasi dialog edit stok jika diperlukan
     // Setelah selesai, panggil refreshAllData();
+  }
+
+  Future<void> showEditCustomerDialog(Customer customer) async {
+    if (context == null) return;
+    final Customer? updatedCustomer = await showDialog<Customer>(
+      context: context!,
+      builder: (ctx) => EditCustomerDialog(customer: customer),
+    );
+
+    if (updatedCustomer != null) {
+      // Cek apakah ada perubahan
+      if (updatedCustomer.name != customer.name ||
+          updatedCustomer.address != customer.address ||
+          updatedCustomer.phoneNumber != customer.phoneNumber) {
+        // Tandai sebagai belum sinkron jika ada perubahan
+        await _dbHelper.updateCustomer(updatedCustomer.copyWith(isSynced: false));
+        await refreshAllData();
+        ScaffoldMessenger.of(context!).showSnackBar(const SnackBar(content: Text('Data pelanggan diperbarui.')));
+      }
+    }
   }
 }

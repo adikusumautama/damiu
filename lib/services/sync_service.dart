@@ -22,13 +22,21 @@ class SyncService {
 
     print('[SyncService] Menemukan ${unsyncedCustomers.length} pelanggan untuk disinkronkan.');
     for (Customer customer in unsyncedCustomers) {
+      if (customer.name.trim().isEmpty) {
+        print('[SyncService] Melewati pelanggan dengan nama kosong.');
+        continue;
+      }
       try {
-        final error = await _firestoreService.upsertCustomer(customer);
-        if (error == null) {
-          await _dbHelper.markCustomerAsSynced(customer.id!);
-          print('[SyncService] Pelanggan "${customer.name}" berhasil disinkronkan.');
+        if (customer.firestoreId == null || customer.firestoreId!.isEmpty) {
+          // Pelanggan baru
+          final newId = await _firestoreService.addCustomer(customer);
+          await _dbHelper.markCustomerAsSynced(customer.id!, newId);
+          print('[SyncService] Pelanggan baru "${customer.name}" berhasil disinkronkan dengan ID: $newId');
         } else {
-          print('[SyncService] Gagal sinkronisasi pelanggan "${customer.name}": $error');
+          // Update pelanggan yang sudah ada
+          await _firestoreService.updateCustomer(customer);
+          await _dbHelper.markCustomerAsSynced(customer.id!, customer.firestoreId!);
+          print('[SyncService] Pelanggan "${customer.name}" berhasil diupdate.');
         }
       } catch (e) {
         print('[SyncService] Error saat sinkronisasi pelanggan "${customer.name}": $e');

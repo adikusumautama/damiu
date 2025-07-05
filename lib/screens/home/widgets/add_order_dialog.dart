@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:damiu/models/customer_model.dart';
-import 'package:damiu/services/firestore_service.dart';
+import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/screens/home/widgets/customer_autocomplete_field.dart';
+import 'package:collection/collection.dart';
 
 class AddOrderDialog extends StatefulWidget {
   final void Function({
@@ -10,6 +11,7 @@ class AddOrderDialog extends StatefulWidget {
     String? otherItems,
     String? address,
     String? phoneNumber,
+    required DateTime date,
   }) onSubmit;
 
   const AddOrderDialog({super.key, required this.onSubmit});
@@ -26,9 +28,13 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
   final _addressController = TextEditingController();
   final _phoneController = TextEditingController();
 
-  final List<Customer> _customers = [];
+  DateTime _selectedDate = DateTime.now();
+  TimeOfDay _selectedTime = TimeOfDay.now();
+
+  List<Customer> _customers = [];
   bool _loadingCustomers = false;
   Customer? _selectedCustomer;
+  final DatabaseHelper _dbHelper = DatabaseHelper();
 
   @override
   void initState() {
@@ -38,19 +44,12 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
 
   Future<void> _loadCustomers() async {
     setState(() => _loadingCustomers = true);
-    // TODO: Ganti dengan dependency injection jika perlu
-    final firestoreService = FirestoreService();
-    try {
-      final stream = firestoreService.getCustomersStream();
-      stream.listen((data) {
-        setState(() {
-          _customers.clear();
-          _customers.addAll(data);
-          _loadingCustomers = false;
-        });
+    final data = await _dbHelper.getAllCustomers();
+    if (mounted) {
+      setState(() {
+        _customers = data;
+        _loadingCustomers = false;
       });
-    } catch (_) {
-      setState(() => _loadingCustomers = false);
     }
   }
 
@@ -113,6 +112,41 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
                 decoration: const InputDecoration(labelText: 'Nomor Telepon (opsional)'),
                 keyboardType: TextInputType.phone,
               ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Tanggal: \\${_selectedDate.day.toString().padLeft(2, '0')}-\\${_selectedDate.month.toString().padLeft(2, '0')}-\\${_selectedDate.year}  Jam: \\${_selectedTime.format(context)}'),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.calendar_today),
+                    tooltip: 'Pilih Tanggal',
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _selectedDate,
+                        firstDate: DateTime(DateTime.now().year - 1),
+                        lastDate: DateTime(DateTime.now().year + 2),
+                      );
+                      if (picked != null) {
+                        setState(() => _selectedDate = picked);
+                      }
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.access_time),
+                    tooltip: 'Pilih Jam',
+                    onPressed: () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: _selectedTime,
+                      );
+                      if (picked != null) {
+                        setState(() => _selectedTime = picked);
+                      }
+                    },
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -123,31 +157,54 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
           child: const Text('Batal'),
         ),
         ElevatedButton(
-          onPressed: () {
+          onPressed: () async {
             if (_formKey.currentState!.validate()) {
-              final name = _selectedCustomer?.name ?? _nameController.text.trim();
-              final address = _selectedCustomer?.address ?? (_addressController.text.trim().isEmpty ? null : _addressController.text.trim());
-              final phone = _selectedCustomer?.phoneNumber ?? (_phoneController.text.trim().isEmpty ? null : _phoneController.text.trim());
+              final name = _nameController.text.trim();
+              final address = _addressController.text.trim().isEmpty ? null : _addressController.text.trim();
+              final phone = _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim();
+
+              // Cek apakah pelanggan dengan nama ini sudah ada.
+              final existingCustomer = _customers.firstWhereOrNull(
+                (c) => c.name.toLowerCase() == name.toLowerCase(),
+              );
+
+              if (existingCustomer == null) {
+                // Pelanggan baru, simpan ke database lokal.
+                final newCustomer = Customer(
+                  name: name,
+                  address: address,
+                  phoneNumber: phone,
+                  createdAt: DateTime.now(),
+                  isSynced: false, // Tandai untuk sinkronisasi
+                );
+                await _dbHelper.upsertCustomer(newCustomer);
+              } else {
+                // Pelanggan sudah ada, cek apakah ada perubahan data.
+                if (existingCustomer.address != address || existingCustomer.phoneNumber != phone) {
+                  final updatedCustomer = existingCustomer.copyWith(
+                    address: address,
+                    phoneNumber: phone,
+                    isSynced: false, // Tandai untuk disinkronkan
+                  );
+                  await _dbHelper.updateCustomer(updatedCustomer);
+                }
+              }
+
+              // Kirim data pesanan ke pemanggil untuk diproses
               widget.onSubmit(
                 customerName: name,
                 gallonQuantity: int.parse(_gallonController.text.trim()),
                 otherItems: _otherItemsController.text.trim().isEmpty ? null : _otherItemsController.text.trim(),
                 address: address,
                 phoneNumber: phone,
+                date: DateTime(
+                  _selectedDate.year,
+                  _selectedDate.month,
+                  _selectedDate.day,
+                  _selectedTime.hour,
+                  _selectedTime.minute,
+                ),
               );
-              // Tambahkan pelanggan baru ke database jika belum ada
-              final exists = _customers.any((c) => c.name.toLowerCase() == name.toLowerCase());
-              if (!exists) {
-                final newCustomer = Customer(
-                  name: name,
-                  address: address,
-                  phoneNumber: phone,
-                  createdAt: DateTime.now(),
-                  isSynced: false,
-                );
-                FirestoreService().upsertCustomer(newCustomer);
-                // TODO: insert ke database lokal jika offline
-              }
               Navigator.pop(context);
             }
           },

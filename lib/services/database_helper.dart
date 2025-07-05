@@ -28,7 +28,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 11,
+      version: 12,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -85,6 +85,7 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE customers(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        firestore_id TEXT,
         name TEXT NOT NULL UNIQUE,
         address TEXT,
         phone_number TEXT,
@@ -163,6 +164,9 @@ class DatabaseHelper {
     }
     if (oldVersion < 11) {
       await db.execute('ALTER TABLE orders ADD COLUMN is_synced INTEGER NOT NULL DEFAULT 0');
+    }
+    if (oldVersion < 12) {
+      await db.execute('ALTER TABLE customers ADD COLUMN firestore_id TEXT');
     }
   }
 
@@ -368,7 +372,7 @@ class DatabaseHelper {
   Future<int> upsertCustomer(Customer customer) async {
     final db = await database;
     return await db.insert('customers', customer.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.ignore);
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<Customer>> getAllCustomers() async {
@@ -388,11 +392,11 @@ class DatabaseHelper {
     return List.generate(maps.length, (i) => Customer.fromMap(maps[i]));
   }
 
-  Future<int> markCustomerAsSynced(int id) async {
+  Future<int> markCustomerAsSynced(int id, String firestoreId) async {
     final db = await database;
     return await db.update(
       'customers',
-      {'is_synced': 1},
+      {'is_synced': 1, 'firestore_id': firestoreId},
       where: 'id = ?',
       whereArgs: [id],
     );

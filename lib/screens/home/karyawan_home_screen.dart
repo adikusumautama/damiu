@@ -14,7 +14,6 @@ import 'package:damiu/services/firestore_service.dart';
 import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/services/sync_service.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'widgets/add_order_dialog.dart';
 import 'widgets/order_summary.dart';
 import 'widgets/orders_list.dart';
@@ -23,6 +22,7 @@ import 'widgets/resource_board.dart';
 import 'widgets/profile_section.dart';
 import 'widgets/customer_book.dart';
 import '../../main.dart' show resetDailyStockIfNeeded;
+import '../other/local_sales_management_screen.dart'; // <-- TAMBAHKAN IMPORT INI
 
 class KaryawanHomeScreen extends StatefulWidget {
   const KaryawanHomeScreen({super.key});
@@ -40,9 +40,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
   final AuthService _authService = AuthService();
   UserModel? _currentUser;
   List<Order> _localOrders = [];
-  DateTime? _customDateTime; // Tambahan: tanggal/waktu custom
-
-  DateTime get _activeDate => _customDateTime ?? DateTime.now();
 
   @override
   void initState() {
@@ -52,7 +49,7 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
     _loadLocalOrders();
     // Reset stok harian otomatis saat screen diinisialisasi
     Future.microtask(() async {
-      await resetDailyStockIfNeeded(isOnline: _isOnline, employeeUid: _currentUser?.uid);
+      await resetDailyStockIfNeeded(isOnline: _isOnline, employeeUid: _currentUser?.uid, activeDate: DateTime.now());
     });
   }
 
@@ -64,22 +61,55 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
 
   void _initConnectivity() async {
     final results = await Connectivity().checkConnectivity();
-    final result = results.isNotEmpty ? results.first : ConnectivityResult.none;
-    _updateConnectionStatus(result);
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
-      final result = results.isNotEmpty ? results.first : ConnectivityResult.none;
-      _updateConnectionStatus(result);
-    });
+    // Panggil _updateConnectionStatus dengan list hasil awal
+    _updateConnectionStatus(results);
+    // Dengarkan perubahan konektivitas
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen(_updateConnectionStatus);
   }
 
-  void _updateConnectionStatus(ConnectivityResult result) async {
-    final online = result != ConnectivityResult.none;
-    if (online && !_isOnline) {
-      // Baru online, lakukan sinkronisasi
-      await _syncService.syncAllData();
-      setState(() => _isOnline = true);
-    } else if (!online && _isOnline) {
-      setState(() => _isOnline = false);
+  void _updateConnectionStatus(List<ConnectivityResult> results) async {
+    // Cek status mounted untuk menghindari error jika widget sudah di-dispose
+    if (!mounted) return;
+
+    final result = results.isNotEmpty ? results.first : ConnectivityResult.none;
+    final bool currentlyOnline = result != ConnectivityResult.none;
+
+    // Hanya update state dan tampilkan notifikasi jika statusnya berubah
+    if (currentlyOnline != _isOnline) {
+      setState(() {
+        _isOnline = currentlyOnline;
+      });
+
+      if (currentlyOnline) {
+        // Baru saja kembali online
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Koneksi kembali terhubung. Memulai sinkronisasi...'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        try {
+          await _syncService.syncAllData();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Sinkronisasi data selesai.'), backgroundColor: Colors.blue),
+            );
+            _loadLocalOrders(); // Muat ulang data setelah sinkronisasi
+          }
+        } catch (e) {
+          print('Error saat sinkronisasi otomatis: $e');
+        }
+      } else {
+        // Baru saja offline
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Anda sekarang offline. Perubahan akan disinkronkan nanti.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     }
   }
 
@@ -100,41 +130,11 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
     setState(() => _selectedIndex = index);
   }
 
-  // Tambahan: fungsi untuk memilih tanggal & waktu
-  Future<void> _pickDateTime() async {
-    final now = DateTime.now();
-    final initialDate = _customDateTime ?? now;
-    final pickedDate = await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(now.year - 1),
-      lastDate: DateTime(now.year + 2),
-    );
-    if (pickedDate != null) {
-      final pickedTime = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.fromDateTime(initialDate),
-      );
-      if (pickedTime != null) {
-        setState(() {
-          _customDateTime = DateTime(
-            pickedDate.year,
-            pickedDate.month,
-            pickedDate.day,
-            pickedTime.hour,
-            pickedTime.minute,
-          );
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final activeDate = _activeDate;
     Widget summaryWidget = _isOnline
         ? StreamBuilder<List<Order>>(
-            stream: _firestoreService.getTodaysOrdersStream(date: activeDate),
+            stream: _firestoreService.getOrdersStream(), // Tampilkan semua orders, tanpa filter tanggal
             builder: (context, snapshot) {
               final orders = snapshot.data ?? [];
               return OrderSummary(orders: orders, isOnline: _isOnline);
@@ -156,7 +156,6 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
           ResourceBoard(
             isOnline: _isOnline,
             employeeUid: _currentUser?.uid,
-            date: activeDate,
             onSetStock: () async {
               final result = await showDialog<Map<String, int>>(
                 context: context,
@@ -191,11 +190,7 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
                         },
                         onCompleteDelivery: (order) async {
                           await _firestoreService.completeOrderTransaction(order);
-                          await _firestoreService.recordSale(
-                            order.gallonQuantity ?? 0,
-                            1,
-                            date: _activeDate,
-                          );
+                          // Hapus pemanggilan recordSale agar tidak double increment
                         },
                       )
                     : OrdersLocalWidget(
@@ -229,47 +224,48 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
                           await _loadLocalOrders();
                         },
                       ),
-                Positioned(
-                  bottom: 16,
-                  right: 16,
-                  child: FloatingActionButton.extended(
-                    icon: const Icon(Icons.add),
-                    label: const Text('Catat Pesanan'),
-                    onPressed: () async {
-                      showDialog(
-                        context: context,
-                        builder: (ctx) => AddOrderDialog(
-                          onSubmit: ({
-                            required String customerName,
-                            required int gallonQuantity,
-                            String? otherItems,
-                            String? address,
-                            String? phoneNumber,
-                          }) async {
-                            final newOrder = Order(
-                              customerName: customerName,
-                              gallonQuantity: gallonQuantity,
-                              otherItems: otherItems,
-                              address: address,
-                              phoneNumber: phoneNumber,
-                              status: OrderStatus.pending,
-                              createdAt: DateTime.now(),
-                              employeeUid: _currentUser?.uid,
-                              isSynced: _isOnline, // Jika online, langsung sync
-                            );
-                            if (_isOnline) {
-                              await _firestoreService.addOrder(newOrder);
-                            } else {
-                              await _dbHelper.insertOrder(newOrder);
-                              await _loadLocalOrders();
-                            }
-                            if (mounted) setState(() {});
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                ),
+                // FloatingActionButton.extended dihapus agar tidak ada tombol ganda
+                // Positioned(
+                //   bottom: 16,
+                //   right: 16,
+                //   child: FloatingActionButton.extended(
+                //     icon: const Icon(Icons.add),
+                //     label: const Text('Catat Pesanan'),
+                //     onPressed: () async {
+                //       showDialog(
+                //         context: context,
+                //         builder: (ctx) => AddOrderDialog(
+                //           onSubmit: ({
+                //             required String customerName,
+                //             required int gallonQuantity,
+                //             String? otherItems,
+                //             String? address,
+                //             String? phoneNumber,
+                //           }) async {
+                //             final newOrder = Order(
+                //               customerName: customerName,
+                //               gallonQuantity: gallonQuantity,
+                //               otherItems: otherItems,
+                //               address: address,
+                //               phoneNumber: phoneNumber,
+                //               status: OrderStatus.pending,
+                //               createdAt: DateTime.now(),
+                //               employeeUid: _currentUser?.uid,
+                //               isSynced: _isOnline, // Jika online, langsung sync
+                //             );
+                //             if (_isOnline) {
+                //               await _firestoreService.addOrder(newOrder);
+                //             } else {
+                //               await _dbHelper.insertOrder(newOrder);
+                //               await _loadLocalOrders();
+                //             }
+                //             if (mounted) setState(() {});
+                //           },
+                //         ),
+                //       );
+                //     },
+                //   ),
+                // ),
               ],
             ),
           ),
@@ -279,27 +275,56 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
       ProfileSection(
         user: _currentUser,
         onLogout: () async {
-          await _authService.signOut();
-          if (mounted) {
-            Navigator.of(context).pushReplacementNamed('/login');
-          }
+          // Tambahkan menu tambahan di sini
+          showModalBottomSheet(
+            context: context,
+            builder: (ctx) => Wrap(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.storage_outlined),
+                  title: const Text('Manajemen Data Lokal'),
+                  onTap: () {
+                    Navigator.pop(ctx); // Tutup bottom sheet
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalSalesManagementScreen()));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.logout, color: Colors.red),
+                  title: const Text('Logout', style: TextStyle(color: Colors.red)),
+                  onTap: () async {
+                    await _authService.signOut();
+                  },
+                ),
+              ],
+            ),
+          );
         },
       ),
     ];
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(_selectedIndex == 0 ? 'Beranda' : _selectedIndex == 1 ? 'Pelanggan' : 'Profil'),
-            Text(
-              DateFormat('EEEE, dd MMMM yyyy • HH:mm').format(_customDateTime ?? DateTime.now()),
-              style: const TextStyle(fontSize: 13, color: Colors.white70),
-            ),
-          ],
-        ),
+        title: Text(_selectedIndex == 0 ? 'Beranda' : _selectedIndex == 1 ? 'Pelanggan' : 'Profil'),
+        // HAPUS: Tombol pengaturan tanggal & reset di AppBar
+        // actions: [
+        //   if (_selectedIndex == 0)
+        //     IconButton(
+        //       icon: const Icon(Icons.today),
+        //       tooltip: 'Ubah Tanggal',
+        //       onPressed: _pickDateTime,
+        //     ),
+        //   if (_selectedIndex == 0 && _customDateTime != null)
+        //     IconButton(
+        //       icon: const Icon(Icons.refresh),
+        //       tooltip: 'Reset ke Hari Ini',
+        //       onPressed: () => setState(() => _customDateTime = null),
+        //     ),
+        // ],
       ),
-      body: _pages[_selectedIndex],
+      // Menggunakan IndexedStack agar state setiap halaman tetap terjaga
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _pages,
+      ),
       bottomNavigationBar: BottomNavigationBar(
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'),
@@ -309,169 +334,55 @@ class _KaryawanHomeScreenState extends State<KaryawanHomeScreen> {
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
       ),
-      drawer: Drawer(
-        child: ListView(
-          children: [
-            UserAccountsDrawerHeader(
-              accountName: Text(_currentUser?.name ?? '-'),
-              accountEmail: Text(_currentUser?.email ?? '-'),
-              currentAccountPicture: const CircleAvatar(child: Icon(Icons.person)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.sync),
-              title: const Text('Sinkronisasi Manual'),
-              onTap: () async {
-                await _syncService.syncAllData();
-                if (mounted) Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.calendar_today),
-              title: const Text('Set Tanggal & Waktu'),
-              subtitle: _customDateTime != null
-                  ? Text(DateFormat('dd MMM yyyy • HH:mm').format(_customDateTime!))
-                  : null,
-              onTap: () async {
-                await _pickDateTime();
-                if (mounted) Navigator.pop(context);
-              },
-            ),
-            if (_customDateTime != null)
-              ListTile(
-                leading: const Icon(Icons.refresh),
-                title: const Text('Reset ke Waktu Sekarang'),
-                onTap: () {
-                  setState(() {
-                    _customDateTime = null;
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.storage),
-              title: const Text('Data Lokal'),
-              subtitle: const Text('Lihat data log, stok, dan pelanggan yang tersimpan di perangkat.'),
-              onTap: () async {
-                final db = DatabaseHelper();
-                List logs = await db.getAllDeliveryLogs();
-                List stocks = await db.getAllLocalStocks();
-                List customers = await db.getAllCustomers();
-                if (!mounted) return;
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  builder: (ctx) => StatefulBuilder(
-                    builder: (ctx, setModalState) => Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('Log Pengantaran', style: Theme.of(context).textTheme.titleMedium),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_forever, color: Colors.red),
-                                  tooltip: 'Hapus Semua Log',
-                                  onPressed: () async {
-                                    await db.deleteAllDeliveryLogs();
-                                    logs = await db.getAllDeliveryLogs();
-                                    setModalState(() {});
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Semua log dihapus.')));
-                                  },
-                                ),
-                              ],
-                            ),
-                            ...logs.map((e) => ListTile(
-                              dense: true,
-                              title: Text('Tanggal: ${DateFormat('dd-MM-yyyy HH:mm').format(e.timestamp)}'),
-                              subtitle: Text('Karyawan: ${e.employeeUid}\nGalon: ${e.gallons}\nStatus: ${e.isNoDeliveryMarker ? 'Tidak Ada Pengantaran' : 'Terkirim'}'),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                tooltip: 'Hapus Log Ini',
-                                onPressed: () async {
-                                  await db.deleteDeliveryLog(e.id!);
-                                  logs = await db.getAllDeliveryLogs();
-                                  setModalState(() {});
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Log dihapus.')));
-                                },
-                              ),
-                            )),
-                            const Divider(),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('Stok Awal', style: Theme.of(context).textTheme.titleMedium),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_forever, color: Colors.red),
-                                  tooltip: 'Hapus Semua Stok',
-                                  onPressed: () async {
-                                    await db.deleteAllDailyStocks();
-                                    stocks = await db.getAllLocalStocks();
-                                    setModalState(() {});
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Semua stok dihapus.')));
-                                  },
-                                ),
-                              ],
-                            ),
-                            ...stocks.map((e) => ListTile(
-                              dense: true,
-                              title: Text('Tanggal: ${e.id}'),
-                              subtitle: Text('Stok Awal: ${e.initialStock}\nStok Kosong: ${e.initialEmptyStock}\nKaryawan: ${e.updatedByUid}\nUpdate: ${DateFormat('dd-MM-yyyy HH:mm').format(e.lastUpdated)}'),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                tooltip: 'Hapus Stok Ini',
-                                onPressed: () async {
-                                  await db.deleteDailyStock(e.id);
-                                  stocks = await db.getAllLocalStocks();
-                                  setModalState(() {});
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stok dihapus.')));
-                                },
-                              ),
-                            )),
-                            const Divider(),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('Pelanggan', style: Theme.of(context).textTheme.titleMedium),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_forever, color: Colors.red),
-                                  tooltip: 'Hapus Semua Pelanggan',
-                                  onPressed: () async {
-                                    await db.deleteAllCustomers();
-                                    customers = await db.getAllCustomers();
-                                    setModalState(() {});
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Semua pelanggan dihapus.')));
-                                  },
-                                ),
-                              ],
-                            ),
-                            ...customers.map((e) => ListTile(
-                              dense: true,
-                              title: Text('Nama: ${e.name}'),
-                              subtitle: Text('Alamat: ${e.address ?? '-'}\nNo. HP: ${e.phoneNumber ?? '-'}'),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                tooltip: 'Hapus Pelanggan Ini',
-                                onPressed: () async {
-                                  await db.deleteCustomer(e.id);
-                                  customers = await db.getAllCustomers();
-                                  setModalState(() {});
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pelanggan dihapus.')));
-                                },
-                              ),
-                            )),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
+      floatingActionButton: _selectedIndex == 0
+          ? FloatingActionButton(
+              onPressed: _showAddOrderDialog,
+              child: const Icon(Icons.add),
+              tooltip: 'Catat Pesanan',
+            )
+          : null,
+    );
+  }
+
+  // --- LOGIKA UNTUK MENAMPILKAN DIALOG ---
+
+  void _showAddOrderDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AddOrderDialog(
+        onSubmit: ({
+          required String customerName,
+          required int gallonQuantity,
+          String? otherItems,
+          String? address,
+          String? phoneNumber,
+          required DateTime date,
+        }) async {
+          // Gabungkan tanggal dari dialog dengan waktu saat ini jika jam 00:00
+          DateTime finalDateTime = date;
+          if (date.hour == 0 && date.minute == 0) {
+            final now = DateTime.now();
+            finalDateTime = DateTime(date.year, date.month, date.day, now.hour, now.minute, now.second);
+          }
+          final newOrder = Order(
+            customerName: customerName,
+            gallonQuantity: gallonQuantity,
+            otherItems: otherItems,
+            address: address,
+            phoneNumber: phoneNumber,
+            status: OrderStatus.pending,
+            createdAt: finalDateTime,
+            employeeUid: _currentUser?.uid,
+            isSynced: _isOnline, // Jika online, langsung sync
+          );
+          if (_isOnline) {
+            await _firestoreService.addOrder(newOrder);
+          } else {
+            await _dbHelper.insertOrder(newOrder);
+            await _loadLocalOrders();
+          }
+          if (mounted) setState(() {});
+        },
       ),
     );
   }

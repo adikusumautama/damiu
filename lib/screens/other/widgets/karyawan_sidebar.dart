@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../local_sales_management_controller.dart';
+import 'package:intl/intl.dart';
 
 class KaryawanSidebar extends StatelessWidget {
   final LocalSalesManagementController controller;
@@ -22,7 +23,7 @@ class KaryawanSidebar extends StatelessWidget {
               context,
               'Log Pengantaran',
               controller.localDeliveryLogs.map((e) =>
-                'Tanggal: ${e.date}\nKaryawan: ${controller.employeeNames[e.employeeUid] ?? e.employeeUid}\nGalon: ${e.gallons}\nStatus: ${e.isNoDeliveryMarker ? 'Tidak Ada Pengantaran' : 'Terkirim'}'
+                'Tanggal: ${DateFormat('dd MMM yyyy, HH:mm').format(e.timestamp)}\nKaryawan: ${controller.employeeNames[e.employeeUid] ?? e.employeeUid}\nGalon: ${e.gallons}\nStatus: ${e.isNoDeliveryMarker ? 'Tidak Ada Pengantaran' : 'Terkirim'}'
               ).toList(),
             ),
           ),
@@ -33,7 +34,7 @@ class KaryawanSidebar extends StatelessWidget {
               context,
               'Stok Awal',
               controller.localStockData.map((e) =>
-                'Tanggal: ${e.dateId}\nStok: ${e.stock}\nKaryawan: ${e.employeeUid}'
+                'Tanggal: ${e.id}\nStok Isi: ${e.initialStock}\nStok Kosong: ${e.initialEmptyStock}\nDiupdate oleh: ${controller.employeeNames[e.updatedByUid] ?? e.updatedByUid}'
               ).toList(),
             ),
           ),
@@ -66,16 +67,16 @@ class KaryawanSidebar extends StatelessWidget {
                         ...controller.localDeliveryLogs.map((e) => Padding(
                           padding: const EdgeInsets.symmetric(vertical: 4.0),
                           child: Text(
-                            'Tanggal: ${e.date}\nKaryawan: ${controller.employeeNames[e.employeeUid] ?? e.employeeUid}\nGalon: ${e.gallons}\nStatus: ${e.isNoDeliveryMarker ? 'Tidak Ada Pengantaran' : 'Terkirim'}',
+                            'Tanggal: ${DateFormat('dd MMM yyyy, HH:mm').format(e.timestamp)}\nKaryawan: ${controller.employeeNames[e.employeeUid] ?? e.employeeUid}\nGalon: ${e.gallons}\nStatus: ${e.isNoDeliveryMarker ? 'Tidak Ada Pengantaran' : 'Terkirim'}',
                             style: const TextStyle(fontSize: 13),
                           ),
                         )),
                         const Divider(),
                         Text('Stok Awal', style: Theme.of(context).textTheme.titleMedium),
-                        ...controller.localStockData.map((e) => Padding(
+                        ...controller.localStockData.map((stock) => Padding(
                           padding: const EdgeInsets.symmetric(vertical: 4.0),
                           child: Text(
-                            'Tanggal: ${e.dateId}\nStok: ${e.stock}\nKaryawan: ${e.employeeUid}',
+                            'Tanggal: ${stock.id}\nStok Isi: ${stock.initialStock}\nStok Kosong: ${stock.initialEmptyStock}\nDiupdate oleh: ${controller.employeeNames[stock.updatedByUid] ?? stock.updatedByUid}',
                             style: const TextStyle(fontSize: 13),
                           ),
                         )),
@@ -114,9 +115,7 @@ class KaryawanSidebar extends StatelessWidget {
               if (confirm == true) {
                 await controller.deleteAllLogs();
                 await controller.deleteAllStocks();
-                if (controller.deleteAllCustomers != null) {
-                  await controller.deleteAllCustomers();
-                }
+                await controller.deleteAllCustomers();
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Semua data lokal berhasil dihapus!')));
                 controller.refreshAllData();
               }

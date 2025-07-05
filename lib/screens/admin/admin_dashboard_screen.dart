@@ -7,9 +7,8 @@ import 'package:damiu/models/daily_stock_model.dart';
 import 'package:intl/intl.dart'; // Untuk format tanggal
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:damiu/models/order_model.dart';
-import 'package:damiu/screens/home/widgets/add_order_dialog.dart';
-import 'package:damiu/screens/home/widgets/order_summary.dart';
+import 'package:damiu/models/order_model.dart' show Order, OrderStatus;
+import 'package:damiu/screens/admin/widgets/summary_card.dart';
 
 class BerandaAdminContent extends StatefulWidget {
   const BerandaAdminContent({super.key});
@@ -27,182 +26,147 @@ class _BerandaAdminContentState extends State<BerandaAdminContent> {
   @override
   Widget build(BuildContext context) {
     final activeDate = _activeDate;
-    return StreamBuilder<List<Order>>(
-      stream: _firestoreService.getTodaysOrdersStream(date: activeDate),
-      builder: (context, orderSnapshot) {
-        if (orderSnapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (orderSnapshot.hasError) {
-          return Center(child: Text('Error memuat pesanan: \\${orderSnapshot.error}'));
-        }
-        final orders = orderSnapshot.data ?? [];
-        final totalGallon = orders.fold<int>(0, (sum, o) => sum + (o.gallonQuantity ?? 0));
-        return StreamBuilder<List<DailySale>>(
-          stream: _firestoreService.getDailySalesStream(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(child: Text('Error memuat data: \\${snapshot.error}'));
-            }
-            final List<DailySale> allSalesData = snapshot.data ?? [];
-            allSalesData.sort((a, b) => a.date.compareTo(b.date));
-            final todaySales = allSalesData.where((sale) {
-              return sale.date.year == activeDate.year &&
-                  sale.date.month == activeDate.month &&
-                  sale.date.day == activeDate.day;
-            }).toList();
-            return SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // --- Pilih tanggal manual ---
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton.icon(
-                          icon: const Icon(Icons.calendar_today),
-                          label: Text(_customDateTime == null
-                              ? 'Tanggal: Hari Ini'
-                              : 'Tanggal: \\${activeDate.day}-\\${activeDate.month}-\\${activeDate.year}'),
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: activeDate,
-                              firstDate: DateTime(activeDate.year - 1),
-                              lastDate: DateTime(activeDate.year + 2),
-                            );
-                            if (picked != null) {
-                              setState(() => _customDateTime = picked);
-                            }
-                          },
-                        ),
-                        if (_customDateTime != null)
-                          IconButton(
-                            icon: const Icon(Icons.refresh),
-                            tooltip: 'Reset ke Hari Ini',
-                            onPressed: () => setState(() => _customDateTime = null),
-                          ),
-                      ],
-                    ),
-                    // --- Statistik Pesanan ---
-                    OrderSummary(orders: orders, isOnline: true),
-                    const SizedBox(height: 8),
-                    // --- Statistik Galon ---
-                    Card(
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            Column(
-                              children: [
-                                const Text('Total Galon Hari Ini', style: TextStyle(fontWeight: FontWeight.bold)),
-                                Text('$totalGallon', style: const TextStyle(fontSize: 18)),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // --- Tombol Catat Pesanan ---
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.add),
-                        label: const Text('Catat Pesanan'),
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (ctx) => AddOrderDialog(
-                              onSubmit: ({
-                                required String customerName,
-                                required int gallonQuantity,
-                                String? otherItems,
-                                String? address,
-                                String? phoneNumber,
-                              }) async {
-                                final order = Order(
-                                  customerName: customerName,
-                                  gallonQuantity: gallonQuantity,
-                                  otherItems: otherItems,
-                                  address: address,
-                                  phoneNumber: phoneNumber,
-                                  status: OrderStatus.pending,
-                                  createdAt: DateTime.now(),
-                                  isSynced: true,
-                                );
-                                await _firestoreService.addOrder(order);
-                                if (mounted) setState(() {});
-                              },
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    // --- Daftar Pesanan Hari Ini ---
-                    Text('Daftar Pesanan Hari Ini', style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    if (orders.isEmpty)
-                      const Text('Belum ada pesanan hari ini.')
-                    else
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: orders.length,
-                        itemBuilder: (context, i) {
-                          final o = orders[i];
-                          return Card(
-                            child: ListTile(
-                              leading: const Icon(Icons.local_drink),
-                              title: Text(o.customerName ?? '-'),
-                              subtitle: Text('Galon: \\${o.gallonQuantity ?? 0} | Status: \\${o.status ?? '-'}'),
-                              trailing: Text(
-                                o.createdAt != null ? DateFormat('HH:mm').format(o.createdAt!) : '-',
-                                style: const TextStyle(fontSize: 12, color: Colors.grey),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    const SizedBox(height: 16),
-                    // --- Bagian Manajemen Stok ---
-                    const Center(
-                        child: Text('Manajemen Stok Hari Ini',
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold))),
-                    const SizedBox(height: 8),
-                    StreamBuilder<DailyStock?>(
-                      stream: _firestoreService.getDailyStockStream(activeDate),
-                      builder: (context, stockSnapshot) {
-                        if (stockSnapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
-                        final dailyStock = stockSnapshot.data;
-                        return _buildStockInfoCard(dailyStock, todaySales);
-                      },
-                    ),
-                  ],
-                ),
-              ),
+    return RefreshIndicator(
+      onRefresh: () async {
+        // Memicu refresh data dengan setState
+        setState(() {});
+      },
+      child: StreamBuilder<List<Order>>(
+        stream: _firestoreService.getTodaysOrdersStream(date: activeDate),
+        builder: (context, orderSnapshot) {
+          if (orderSnapshot.connectionState == ConnectionState.waiting && !orderSnapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (orderSnapshot.hasError) {
+            return Center(child: Text('Error memuat pesanan: \\${orderSnapshot.error}'));
+          }
+          final orders = orderSnapshot.data ?? [];
+          final totalGallon = orders.fold<int>(0, (sum, o) => sum + (o.gallonQuantity ?? 0));
+          final deliveredOrders = orders.where((o) => o.status == OrderStatus.delivered).length;
+          final pendingOrders = orders.where((o) => o.status == OrderStatus.pending).length;
+          final inDeliveryOrders = orders.where((o) => o.status == OrderStatus.inDelivery).length;
+
+          return StreamBuilder<DailySale?>(
+            stream: _firestoreService.getDailySaleStreamByDate(activeDate),
+            builder: (context, saleSnapshot) {
+              final todaySales = saleSnapshot.data;
+              return StreamBuilder<DailyStock?>(
+                stream: _firestoreService.getDailyStockStream(activeDate),
+                builder: (context, stockSnapshot) {
+                  final dailyStock = stockSnapshot.data;
+                  return ListView(
+                    padding: const EdgeInsets.all(16.0),
+                    children: [
+                      _buildDatePicker(),
+                      const SizedBox(height: 16),
+                      _buildSummaryGrid(orders, todaySales, dailyStock),
+                      const SizedBox(height: 24),
+                      _buildStockInfoCard(dailyStock, todaySales),
+                      const SizedBox(height: 24),
+                      Text('Daftar Pesanan Hari Ini', style: Theme.of(context).textTheme.titleLarge),
+                      const Divider(height: 24),
+                      _buildOrdersList(orders),
+                    ],
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildDatePicker() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        TextButton.icon(
+          icon: const Icon(Icons.calendar_today),
+          label: Text(_customDateTime == null
+              ? 'Hari Ini'
+              : DateFormat('dd MMM yyyy').format(_activeDate)),
+          onPressed: () async {
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: _activeDate,
+              firstDate: DateTime(_activeDate.year - 1),
+              lastDate: DateTime(_activeDate.year + 2),
             );
+            if (picked != null) {
+              setState(() => _customDateTime = picked);
+            }
           },
+        ),
+        if (_customDateTime != null)
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Reset ke Hari Ini',
+            onPressed: () => setState(() => _customDateTime = null),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryGrid(List<Order> orders, DailySale? sales, DailyStock? stock) {
+    final totalGallon = orders.fold<int>(0, (sum, o) => sum + (o.gallonQuantity ?? 0));
+    final deliveredOrders = orders.where((o) => o.status == OrderStatus.delivered).length;
+    final pendingOrders = orders.where((o) => o.status == OrderStatus.pending).length;
+    final inDeliveryOrders = orders.where((o) => o.status == OrderStatus.inDelivery).length;
+
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 2.2,
+      children: [
+        SummaryCard(title: 'Total Pesanan', value: '${orders.length}', icon: Icons.shopping_cart_outlined, color: Colors.blue),
+        SummaryCard(title: 'Galon Terjual', value: '${sales?.quantity ?? 0}', icon: Icons.local_drink_outlined, color: Colors.green),
+        SummaryCard(title: 'Sisa Stok Isi', value: '${stock?.currentStock ?? 0}', icon: Icons.inventory_2_outlined, color: Colors.orange),
+        SummaryCard(title: 'Stok Kosong', value: '${stock?.initialEmptyStock ?? 0}', icon: Icons.replay_circle_filled_outlined, color: Colors.grey),
+        SummaryCard(title: 'Belum Diantar', value: '$pendingOrders', icon: Icons.pending_actions_outlined, color: Colors.red),
+        SummaryCard(title: 'Sudah Diantar', value: '$deliveredOrders', icon: Icons.check_circle_outline, color: Colors.teal),
+      ],
+    );
+  }
+
+  Widget _buildOrdersList(List<Order> orders) {
+    if (orders.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 48.0),
+          child: Text('Belum ada pesanan untuk tanggal ini.'),
+        ),
+      );
+    }
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: orders.length,
+      itemBuilder: (context, i) {
+        final o = orders[i];
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            leading: CircleAvatar(child: Icon(o.status == OrderStatus.delivered ? Icons.check : Icons.local_shipping_outlined)),
+            title: Text(o.customerName ?? '-'),
+            subtitle: Text('Galon: ${o.gallonQuantity ?? 0} | Status: ${o.status ?? '-'}'),
+            trailing: Text(
+              o.createdAt != null ? DateFormat('HH:mm').format(o.createdAt!) : '-',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ),
         );
       },
     );
   }
 
-  Widget _buildStockInfoCard(DailyStock? stock, List<DailySale> sales) {
+  Widget _buildStockInfoCard(DailyStock? stock, DailySale? sales) {
     // Data untuk Galon Isi
     final initialFilledStock = stock?.initialStock ?? 0;
-    final totalSold = sales.fold<int>(0, (sum, item) => sum + item.quantity);
+    final totalSold = sales?.quantity ?? 0;
     final remainingFilledStock = initialFilledStock - totalSold;
 
     // Data untuk Galon Kosong

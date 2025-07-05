@@ -31,13 +31,14 @@ class FirestoreService {
     });
   }
 
-  Future<String?> addOrder(Order order) async {
+  Future<String> addOrder(Order order) async {
     try {
-      await _db.collection('orders').add(order.toMapForFirestore());
-      return null;
+      DocumentReference docRef =
+          await _db.collection('orders').add(order.toMapForFirestore());
+      return docRef.id;
     } catch (e) {
       print('Error adding order to Firestore: $e');
-      return e.toString();
+      rethrow; // Lemparkan kembali error agar bisa ditangani oleh SyncService
     }
   }
 
@@ -71,9 +72,10 @@ class FirestoreService {
     }
 
     final orderRef = _db.collection('orders').doc(order.firestoreId!);
-    final stockDocId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final orderDate = order.createdAt ?? DateTime.now();
+    final stockDocId = DateFormat('yyyy-MM-dd').format(orderDate);
     final stockRef = _db.collection('daily_stock_levels').doc(stockDocId);
-    final saleDocId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final saleDocId = DateFormat('yyyy-MM-dd').format(orderDate);
     final saleRef = _db.collection('daily_sales').doc(saleDocId);
 
     try {
@@ -81,11 +83,15 @@ class FirestoreService {
         // 1. Get the current stock document to ensure it exists.
         final stockSnapshot = await transaction.get(stockRef);
         if (!stockSnapshot.exists) {
-          // This case should ideally be handled by creating a stock doc at the start of the day.
-          // However, as a fallback, we can throw an error.
-          throw Exception("Dokumen stok untuk hari ini tidak ditemukan.");
+          // Jika dokumen stok belum ada, buat dokumen stok default untuk tanggal order
+          transaction.set(stockRef, {
+            'initial_stock': 0,
+            'current_stock': 0,
+            'last_updated': Timestamp.now(),
+            'updated_by_uid': order.employeeUid ?? '-',
+          }, SetOptions(merge: true));
         }
-
+        // Ambil ulang snapshot setelah create (atau gunakan yang sudah ada)
         // 2. Update order status
         transaction.update(orderRef, {
           'status': OrderStatus.delivered,
@@ -144,19 +150,30 @@ class FirestoreService {
   
   // --- Operasi untuk Pelanggan (Customer) ---
 
-  Future<String?> upsertCustomer(Customer customer) async {
-    if (customer.name.trim().isEmpty) {
-      print('Error: Mencoba sinkronisasi pelanggan dengan nama kosong. Dilewati.');
-      return null;
+  Future<String> addCustomer(Customer customer) async {
+    try {
+      final docRef = await _db
+          .collection('customers')
+          .add(customer.toFirestore());
+      return docRef.id;
+    } catch (e) {
+      print('Error adding customer to Firestore: $e');
+      rethrow;
+    }
+  }
+
+  Future<String?> updateCustomer(Customer customer) async {
+    if (customer.firestoreId == null) {
+      return "Customer Firestore ID tidak ditemukan untuk diupdate.";
     }
     try {
       await _db
           .collection('customers')
-          .doc(customer.name)
+          .doc(customer.firestoreId)
           .set(customer.toFirestore(), SetOptions(merge: true));
-      return null;
+      return null; // Sukses
     } catch (e) {
-      print('Error upserting customer to Firestore: $e');
+      print('Error updating customer to Firestore: $e');
       return e.toString();
     }
   }

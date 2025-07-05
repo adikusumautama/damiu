@@ -113,9 +113,9 @@ class AuthWrapper extends StatelessWidget {
 }
 
 Future<void> resetDailyStockIfNeeded(
-    {required bool isOnline, required String? employeeUid}) async {
+    {required bool isOnline, required String? employeeUid, required DateTime activeDate}) async {
   final prefs = await SharedPreferences.getInstance();
-  final today = DateTime.now();
+  final today = activeDate;
   final todayStr = today.toIso8601String().split('T').first;
   final lastReset = prefs.getString('last_stock_reset_date');
   if (lastReset == todayStr) return; // Sudah reset hari ini

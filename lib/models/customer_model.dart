@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Customer {
   final int? id;
+  final String? firestoreId;
   final String name;
   final String? address;
   final String? phoneNumber;
@@ -12,6 +13,7 @@ class Customer {
 
   Customer({
     this.id,
+    this.firestoreId,
     required this.name,
     this.address,
     this.phoneNumber,
@@ -22,6 +24,7 @@ class Customer {
   // --- TAMBAHKAN METHOD BARU DI SINI ---
   Customer copyWith({
     int? id,
+    String? firestoreId,
     String? name,
     String? address,
     String? phoneNumber,
@@ -30,6 +33,7 @@ class Customer {
   }) {
     return Customer(
       id: id ?? this.id,
+      firestoreId: firestoreId ?? this.firestoreId,
       name: name ?? this.name,
       address: address ?? this.address,
       phoneNumber: phoneNumber ?? this.phoneNumber,
@@ -42,6 +46,7 @@ class Customer {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'firestore_id': firestoreId,
       'name': name,
       'address': address,
       'phone_number': phoneNumber,
@@ -53,6 +58,7 @@ class Customer {
   factory Customer.fromMap(Map<String, dynamic> map) {
     return Customer(
       id: map['id'] as int?,
+      firestoreId: map['firestore_id'] as String?,
       name: map['name'] as String,
       address: map['address'] as String?,
       phoneNumber: map['phone_number'] as String?,
@@ -72,7 +78,7 @@ class Customer {
 
   factory Customer.fromFirestore(Map<String, dynamic> map, String documentId) {
     return Customer(
-      id: null,
+      firestoreId: documentId,
       name: map['name'] as String,
       address: map['address'] as String?,
       phoneNumber: map['phone_number'] as String?,
