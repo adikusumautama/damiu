@@ -21,6 +21,7 @@ dependencies:
   http: ^1.4.0
   rxdart: ^0.28.0
   shared_preferences: ^2.5.3
+  provider: ^6.1.5
 
 
 dev_dependencies:
