@@ -1,9 +1,17 @@
 // lib/models/order_model.dart
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package.cloud_firestore/cloud_firestore.dart';
+
+/// Kelas helper untuk menyimpan konstanta status pesanan.
+/// Mencegah kesalahan ketik dan membuat kode lebih mudah dibaca.
+class OrderStatus {
+  static const String pending = 'Belum Diantar';
+  static const String inDelivery = 'Sedang Dalam Pengantaran';
+  static const String delivered = 'Sudah Diantar';
+}
 
 class Order {
-  final int? id; // Kunci utama untuk SQLite
+  final int? id; // Kunci utama untuk database lokal (SQLite)
   final String? firestoreId; // ID unik dari dokumen di Firestore
   final String? customerName;
   final int? gallonQuantity;
@@ -14,7 +22,7 @@ class Order {
   final DateTime? createdAt;
   final DateTime? deliveredAt;
   final String? employeeUid;
-  final bool isSynced; // Penanda untuk sinkronisasi
+  final bool isSynced; // Penanda untuk sinkronisasi offline
 
   Order({
     this.id,
@@ -28,10 +36,10 @@ class Order {
     this.createdAt,
     this.deliveredAt,
     this.employeeUid,
-    this.isSynced = false, // Defaultnya adalah false (belum sinkron)
+    this.isSynced = false,
   });
 
-  // Konversi ke Map untuk database lokal (SQLite)
+  /// Konversi objek Order ke Map untuk disimpan di database lokal (SQLite).
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -45,11 +53,11 @@ class Order {
       'created_at': createdAt?.toIso8601String(),
       'delivered_at': deliveredAt?.toIso8601String(),
       'employee_uid': employeeUid,
-      'is_synced': isSynced ? 1 : 0, // Simpan sebagai integer (0 atau 1)
+      'is_synced': isSynced ? 1 : 0,
     };
   }
 
-  // Membuat objek dari Map database lokal (SQLite)
+  /// Membuat objek Order dari Map yang berasal dari database lokal (SQLite).
   factory Order.fromMap(Map<String, dynamic> map) {
     return Order(
       id: map['id'] as int?,
@@ -60,53 +68,48 @@ class Order {
       address: map['address'] as String?,
       phoneNumber: map['phone_number'] as String?,
       status: map['status'] as String?,
-      createdAt: map['created_at'] != null ? DateTime.parse(map['created_at'] as String) : null,
-      deliveredAt: map['delivered_at'] != null
-          ? DateTime.parse(map['delivered_at'] as String)
-          : null,
+      createdAt: map['created_at'] != null ? DateTime.tryParse(map['created_at'] as String) : null,
+      deliveredAt: map['delivered_at'] != null ? DateTime.tryParse(map['delivered_at'] as String) : null,
       employeeUid: map['employee_uid'] as String?,
-      isSynced: (map['is_synced'] as int? ?? 0) == 1, // Baca dari integer
+      isSynced: (map['is_synced'] as int? ?? 0) == 1,
     );
   }
 
-  // Konversi ke Map untuk Firestore
+  // ======================================================================
+  // PERUBAHAN UTAMA: Konversi ke dan dari Firestore yang lebih aman dan eksplisit.
+  // ======================================================================
+
+  /// Konversi objek Order ke Map untuk disimpan di Firestore.
   Map<String, dynamic> toMapForFirestore() {
     return {
-      'customerName': customerName ?? '-',
+      // Menggunakan ?? untuk memberikan nilai default jika null, mencegah error di Firestore
+      'customerName': customerName ?? 'Tanpa Nama',
       'gallonQuantity': gallonQuantity ?? 0,
       'otherItems': otherItems,
       'address': address,
       'phoneNumber': phoneNumber,
-      'status': status ?? '-',
-      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
+      'status': status ?? OrderStatus.pending,
+      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
       'deliveredAt': deliveredAt != null ? Timestamp.fromDate(deliveredAt!) : null,
-      'employeeUid': employeeUid ?? '-',
+      'employeeUid': employeeUid,
     };
   }
 
-  // Membuat objek dari data Firestore
+  /// Membuat objek Order dari data snapshot Firestore.
   factory Order.fromFirestore(Map<String, dynamic> data, String documentId) {
     return Order(
       firestoreId: documentId,
-      customerName: data['customerName'],
-      gallonQuantity: data['gallonQuantity'],
-      otherItems: data['otherItems'],
-      address: data['address'],
-      phoneNumber: data['phoneNumber'],
-      status: data['status'],
-      createdAt: data['createdAt'] != null ? (data['createdAt'] as Timestamp).toDate() : null,
-      deliveredAt: data['deliveredAt'] != null
-          ? (data['deliveredAt'] as Timestamp).toDate()
-          : null,
-      employeeUid: data['employeeUid'],
+      customerName: data['customerName'] as String?,
+      // Penanganan yang lebih aman untuk tipe data num dari Firestore
+      gallonQuantity: (data['gallonQuantity'] as num?)?.toInt(),
+      otherItems: data['otherItems'] as String?,
+      address: data['address'] as String?,
+      phoneNumber: data['phoneNumber'] as String?,
+      status: data['status'] as String?,
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+      deliveredAt: (data['deliveredAt'] as Timestamp?)?.toDate(),
+      employeeUid: data['employeeUid'] as String?,
       isSynced: true, // Data dari Firestore selalu dianggap sudah sinkron
     );
   }
-}
-
-// Kelas helper untuk konsistensi status
-class OrderStatus {
-  static const String pending = 'Belum Diantar';
-  static const String inDelivery = 'Sedang Dalam Pengantaran';
-  static const String delivered = 'Sudah Diantar';
 }
