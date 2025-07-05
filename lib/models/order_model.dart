@@ -1,6 +1,7 @@
 // lib/models/order_model.dart
 
-import 'package.cloud_firestore/cloud_firestore.dart';
+// --- PERBAIKAN: Mengganti titik dengan titik dua ---
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Kelas helper untuk menyimpan konstanta status pesanan.
 /// Mencegah kesalahan ketik dan membuat kode lebih mudah dibaca.
@@ -75,14 +76,9 @@ class Order {
     );
   }
 
-  // ======================================================================
-  // PERUBAHAN UTAMA: Konversi ke dan dari Firestore yang lebih aman dan eksplisit.
-  // ======================================================================
-
   /// Konversi objek Order ke Map untuk disimpan di Firestore.
   Map<String, dynamic> toMapForFirestore() {
     return {
-      // Menggunakan ?? untuk memberikan nilai default jika null, mencegah error di Firestore
       'customerName': customerName ?? 'Tanpa Nama',
       'gallonQuantity': gallonQuantity ?? 0,
       'otherItems': otherItems,
@@ -100,7 +96,6 @@ class Order {
     return Order(
       firestoreId: documentId,
       customerName: data['customerName'] as String?,
-      // Penanganan yang lebih aman untuk tipe data num dari Firestore
       gallonQuantity: (data['gallonQuantity'] as num?)?.toInt(),
       otherItems: data['otherItems'] as String?,
       address: data['address'] as String?,
@@ -109,7 +104,7 @@ class Order {
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       deliveredAt: (data['deliveredAt'] as Timestamp?)?.toDate(),
       employeeUid: data['employeeUid'] as String?,
-      isSynced: true, // Data dari Firestore selalu dianggap sudah sinkron
+      isSynced: true,
     );
   }
 }
