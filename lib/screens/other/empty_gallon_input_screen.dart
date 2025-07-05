@@ -4,6 +4,7 @@ import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/firestore_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 class EmptyGallonInputScreen extends StatefulWidget {
   const EmptyGallonInputScreen({super.key});
@@ -25,6 +26,10 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
     super.dispose();
   }
 
+  // ======================================================================
+  // PERUBAHAN LOGIKA UTAMA ADA DI FUNGSI INI
+  // ======================================================================
+  /// Menyimpan log galon kembali dan secara langsung memperbarui stok.
   Future<void> _saveReturnedGallons() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
@@ -43,31 +48,43 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
       }
       
       final int quantity = int.parse(_gallonQuantityController.text);
+      final DateTime today = DateTime.now();
 
-      // --- PERUBAHAN LOGIKA DI SINI ---
-      // 1. Catat log galon kembali untuk perhitungan harian.
-      final logError = await _firestoreService.addReturnedGallonLog(
+      // 1. Catat log untuk histori (opsional, tapi baik untuk audit)
+      // Fungsi ini bisa Anda simpan jika ingin ada jejak log terpisah.
+      await _firestoreService.addReturnedGallonLog(
         quantity: quantity, 
         employeeUid: employeeUid
       );
 
-      // 2. Sesuaikan juga total persediaan saat ini.
+      // 2. Tambah stok galon isi yang tersedia.
+      // Galon kosong yang kembali dianggap menjadi galon isi yang siap dijual lagi.
       final stockError = await _firestoreService.adjustCurrentStock(quantity);
 
+      // 3. Tambah jumlah stok galon kosong.
+      // Kita perlu memodifikasi service untuk bisa increment,
+      // untuk sementara kita get-then-set.
+      final currentStockDoc = await _firestoreService.getDailyStockOnce(today);
+      final currentEmptyStock = currentStockDoc?.initialEmptyStock ?? 0;
+      final emptyStockError = await _firestoreService.setInitialEmptyStock(
+        date: today, 
+        emptyStock: currentEmptyStock + quantity, 
+        updatedByUid: employeeUid
+      );
+
       if (mounted) {
-        if (logError == null && stockError == null) {
+        if (stockError == null && emptyStockError == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Berhasil memperbarui stok dan log!')),
+            const SnackBar(content: Text('Berhasil memperbarui data stok!')),
           );
-          Navigator.pop(context, true);
+          Navigator.pop(context, true); // Kirim sinyal sukses
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Gagal memperbarui data: ${logError ?? stockError}')),
+            SnackBar(content: Text('Gagal memperbarui data: ${stockError ?? emptyStockError}')),
           );
         }
       }
-      // --- AKHIR PERUBAHAN ---
-
+      
       if(mounted){
         setState(() {
           _isLoading = false;
