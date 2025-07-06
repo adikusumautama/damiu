@@ -17,7 +17,7 @@ import 'package:damiu/screens/home/widgets/resource_board.dart';
 import 'package:damiu/screens/home/widgets/profile_section.dart';
 import 'package:damiu/screens/home/widgets/customer_book.dart';
 import 'package:damiu/main.dart' show resetDailyStockIfNeeded;
-
+import 'package:damiu/screens/other/local_data_management_screen.dart';
 class KaryawanHomeViewModel extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
   final DatabaseHelper _dbHelper = DatabaseHelper();
@@ -95,7 +95,23 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   Future<String?> onUpdateOrder(String firestoreId, Order updatedOrder) async => await _firestoreService.updateOrder(firestoreId, updatedOrder);
   Future<String?> onDeleteOrder(String firestoreId) async => await _firestoreService.deleteOrder(firestoreId);
   Future<String?> onStartDelivery(Order order) async => (order.firestoreId == null) ? "Order ID tidak valid." : await _firestoreService.updateOrderStatus(order.firestoreId!, OrderStatus.inDelivery);
-  Future<String?> onCompleteDelivery(Order order) async => await _firestoreService.completeOrderTransaction(order);
+  Future<String?> onCompleteDelivery(Order order) async {
+    if (_isOnline) {
+      // Mode Online: Lakukan transaksi lengkap ke Firestore
+      return await _firestoreService.completeOrderTransaction(order);
+    } else {
+      // Mode Offline: Perbarui status di database lokal untuk disinkronkan nanti
+      if (order.firestoreId != null) {
+        final localOrder = await _dbHelper.getOrderByFirestoreId(order.firestoreId!);
+        if (localOrder != null && localOrder.id != null) {
+          await _dbHelper.updateOrderStatus(localOrder.id!, OrderStatus.delivered, setDeliveredTime: true);
+          await _loadLocalOrders(); // Muat ulang daftar pesanan lokal
+          return null; // Sukses
+        }
+      }
+      return 'Pesanan tidak ditemukan di database lokal untuk diselesaikan saat offline.';
+    }
+  }
   
   Future<void> onAddOrder({required String customerName, required int gallonQuantity, String? otherItems, String? address, String? phoneNumber, required DateTime date}) async {
     final now = DateTime.now();
@@ -167,7 +183,10 @@ class KaryawanHomeScreen extends StatelessWidget {
         )),
       ]),
       CustomerBook(isOnline: viewModel.isOnline),
-      ProfileSection(user: viewModel.currentUser, onLogout: () => viewModel._authService.signOut()),
+      ProfileSection(user: viewModel.currentUser, onLogout: () => showModalBottomSheet(context: context, builder: (ctx) => Wrap(children: [
+        ListTile(leading: const Icon(Icons.storage_outlined), title: const Text('Manajemen Data Lokal'), onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalDataManagementScreen())); }),
+        ListTile(leading: const Icon(Icons.logout, color: Colors.red), title: const Text('Logout', style: TextStyle(color: Colors.red)), onTap: () => viewModel._authService.signOut()),
+      ]))),
     ];
   }
 

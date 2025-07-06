@@ -3,7 +3,6 @@
 import 'package:damiu/models/customer_model.dart';
 import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/models/daily_stock_model.dart';
-import 'package:damiu/models/delivery_log_model.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart';
@@ -42,7 +41,7 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE orders(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        firestore_id TEXT,
+        firestore_id TEXT UNIQUE,
         customer_name TEXT NOT NULL,
         gallon_quantity INTEGER NOT NULL,
         other_items TEXT,
@@ -91,17 +90,6 @@ class DatabaseHelper {
         quantity INTEGER,
         is_synced INTEGER DEFAULT 0,
         employee_uid TEXT
-      )
-    ''');
-    
-    // Tabel Log Pengantaran (delivery_log) - Opsional, bisa dihapus jika tidak diperlukan untuk audit
-    await db.execute('''
-      CREATE TABLE delivery_log(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT,
-        gallons INTEGER,
-        employee_uid TEXT,
-        is_summarized INTEGER DEFAULT 0
       )
     ''');
   }
@@ -160,6 +148,19 @@ class DatabaseHelper {
     }
   }
 
+  Future<Order?> getOrderByFirestoreId(String firestoreId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'orders',
+      where: 'firestore_id = ?',
+      whereArgs: [firestoreId],
+      limit: 1,
+    );
+    if (maps.isNotEmpty) {
+      return Order.fromMap(maps.first);
+    }
+    return null;
+  }
   // --- Operasi CRUD untuk Customer ---
 
   Future<void> upsertCustomer(Customer customer) async {
@@ -271,5 +272,17 @@ class DatabaseHelper {
 
   String _formatDate(DateTime date) {
     return date.toIso8601String().split('T').first;
+  }
+
+  /// Menghapus semua data transaksional dari database lokal.
+  /// Berguna untuk reset atau troubleshooting.
+  Future<void> clearAllLocalData() async {
+    final db = await database;
+    final batch = db.batch();
+    batch.delete('orders');
+    batch.delete('customers');
+    batch.delete('daily_stock');
+    batch.delete('daily_sales');
+    await batch.commit(noResult: true);
   }
 }
