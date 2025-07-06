@@ -47,6 +47,49 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
     );
   }
 
+  Future<void> _onStartDelivery(Order order) async {
+    if (order.firestoreId == null) {
+      _handleApiResponse('Pesanan tidak memiliki ID Firestore.', null);
+      return;
+    }
+    // Buat salinan order dengan status baru
+    final updatedOrder = Order(
+      firestoreId: order.firestoreId,
+      customerName: order.customerName,
+      gallonQuantity: order.gallonQuantity,
+      otherItems: order.otherItems,
+      address: order.address,
+      phoneNumber: order.phoneNumber,
+      status: OrderStatus.inDelivery, // <-- Ubah status
+      createdAt: order.createdAt,
+      employeeUid: order.employeeUid,
+      deliveredAt: order.deliveredAt, // Pertahankan waktu selesai yang mungkin sudah ada
+    );
+    final error = await _firestoreService.updateOrder(order.firestoreId!, updatedOrder);
+    if (mounted) _handleApiResponse(error, 'Status pesanan diubah menjadi "Sedang Diantar".');
+  }
+
+  Future<void> _onCompleteDelivery(Order order) async {
+    if (order.firestoreId == null) {
+      _handleApiResponse('Pesanan tidak memiliki ID Firestore.', null);
+      return;
+    }
+    final updatedOrder = Order(
+      firestoreId: order.firestoreId,
+      customerName: order.customerName,
+      gallonQuantity: order.gallonQuantity,
+      otherItems: order.otherItems,
+      address: order.address,
+      phoneNumber: order.phoneNumber,
+      status: OrderStatus.delivered, // <-- Ubah status
+      createdAt: order.createdAt,
+      deliveredAt: DateTime.now(), // <-- Atur waktu selesai
+      employeeUid: order.employeeUid,
+    );
+    final error = await _firestoreService.updateOrder(order.firestoreId!, updatedOrder);
+    if (mounted) _handleApiResponse(error, 'Pesanan ditandai sebagai "Selesai".');
+  }
+
   void _showDeleteConfirmDialog(Order order) {
     showDialog(
       context: context,
@@ -73,13 +116,13 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
     );
   }
 
-  void _handleApiResponse(String? error, String successMessage) {
+  void _handleApiResponse(String? error, String? successMessage) {
     if (!mounted) return;
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $error'), backgroundColor: Colors.red),
       );
-    } else {
+    } else if (successMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(successMessage), backgroundColor: Colors.green),
       );
@@ -115,9 +158,8 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
                 order: order,
                 onEdit: () => _showEditOrderDialog(order),
                 onDelete: () => _showDeleteConfirmDialog(order),
-                // Admin tidak melakukan pengantaran, jadi kita berikan fungsi kosong
-                onStartDelivery: () {},
-                onCompleteDelivery: () {},
+                onStartDelivery: () => _onStartDelivery(order),
+                onCompleteDelivery: () => _onCompleteDelivery(order),
               );
             },
           );
