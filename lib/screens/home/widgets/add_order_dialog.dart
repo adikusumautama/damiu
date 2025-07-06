@@ -1,11 +1,12 @@
+// lib/screens/home/widgets/add_order_dialog.dart
+
 import 'package:flutter/material.dart';
-import 'package:damiu/models/customer_model.dart';
-import 'package:damiu/services/database_helper.dart';
-import 'package:damiu/screens/home/widgets/customer_autocomplete_field.dart';
-import 'package:collection/collection.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:damiu/models/order_model.dart'; // Pastikan impor ini ada
 
 class AddOrderDialog extends StatefulWidget {
-  final void Function({
+  final Function({
     required String customerName,
     required int gallonQuantity,
     String? otherItems,
@@ -13,8 +14,14 @@ class AddOrderDialog extends StatefulWidget {
     String? phoneNumber,
     required DateTime date,
   }) onSubmit;
+  // --- PERBAIKAN: Tambahkan parameter ini ---
+  final Order? orderToEdit;
 
-  const AddOrderDialog({super.key, required this.onSubmit});
+  const AddOrderDialog({
+    super.key,
+    required this.onSubmit,
+    this.orderToEdit, // Jadikan opsional
+  });
 
   @override
   State<AddOrderDialog> createState() => _AddOrderDialogState();
@@ -22,130 +29,91 @@ class AddOrderDialog extends StatefulWidget {
 
 class _AddOrderDialogState extends State<AddOrderDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _gallonController = TextEditingController();
-  final _otherItemsController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _phoneController = TextEditingController();
-
+  late TextEditingController _customerNameController;
+  late TextEditingController _gallonQuantityController;
+  late TextEditingController _otherItemsController;
+  late TextEditingController _addressController;
+  late TextEditingController _phoneNumberController;
   DateTime _selectedDate = DateTime.now();
-  TimeOfDay _selectedTime = TimeOfDay.now();
-
-  List<Customer> _customers = [];
-  bool _loadingCustomers = false;
-  Customer? _selectedCustomer;
-  final DatabaseHelper _dbHelper = DatabaseHelper();
+  bool _isEditMode = false;
 
   @override
   void initState() {
     super.initState();
-    _loadCustomers();
-  }
+    _isEditMode = widget.orderToEdit != null;
 
-  Future<void> _loadCustomers() async {
-    setState(() => _loadingCustomers = true);
-    final data = await _dbHelper.getAllCustomers();
-    if (mounted) {
-      setState(() {
-        _customers = data;
-        _loadingCustomers = false;
-      });
-    }
+    // --- PERBAIKAN: Isi form dengan data yang ada jika dalam mode edit ---
+    _customerNameController = TextEditingController(text: widget.orderToEdit?.customerName ?? '');
+    _gallonQuantityController = TextEditingController(text: widget.orderToEdit?.gallonQuantity?.toString() ?? '');
+    _otherItemsController = TextEditingController(text: widget.orderToEdit?.otherItems ?? '');
+    _addressController = TextEditingController(text: widget.orderToEdit?.address ?? '');
+    _phoneNumberController = TextEditingController(text: widget.orderToEdit?.phoneNumber ?? '');
+    _selectedDate = widget.orderToEdit?.createdAt ?? DateTime.now();
   }
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _gallonController.dispose();
+    _customerNameController.dispose();
+    _gallonQuantityController.dispose();
     _otherItemsController.dispose();
     _addressController.dispose();
-    _phoneController.dispose();
+    _phoneNumberController.dispose();
     super.dispose();
+  }
+
+  void _submitForm() {
+    if (_formKey.currentState!.validate()) {
+      widget.onSubmit(
+        customerName: _customerNameController.text,
+        gallonQuantity: int.parse(_gallonQuantityController.text),
+        otherItems: _otherItemsController.text,
+        address: _addressController.text,
+        phoneNumber: _phoneNumberController.text,
+        date: _selectedDate,
+      );
+      Navigator.of(context).pop();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Catat Pesanan Baru'),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
+      title: Text(_isEditMode ? 'Ubah Pesanan' : 'Catat Pesanan Baru'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _loadingCustomers
-                  ? const LinearProgressIndicator()
-                  : CustomerAutocompleteField(
-                      customers: _customers,
-                      controller: _nameController,
-                      onSelected: (customer) {
-                        setState(() {
-                          _selectedCustomer = customer;
-                        });
-                        if (customer != null) {
-                          _addressController.text = customer.address ?? '';
-                          _phoneController.text = customer.phoneNumber ?? '';
-                        }
-                      },
-                    ),
               TextFormField(
-                controller: _gallonController,
-                decoration: const InputDecoration(labelText: 'Jumlah Galon *'),
+                controller: _customerNameController,
+                decoration: const InputDecoration(labelText: 'Nama Pelanggan'),
+                validator: (value) => value == null || value.isEmpty ? 'Nama tidak boleh kosong' : null,
+              ),
+              TextFormField(
+                controller: _gallonQuantityController,
+                decoration: const InputDecoration(labelText: 'Jumlah Galon'),
                 keyboardType: TextInputType.number,
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Jumlah galon wajib diisi';
-                  final n = int.tryParse(v);
-                  if (n == null || n <= 0) return 'Masukkan angka galon yang valid';
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                validator: (value) {
+                  if (value == null || value.isEmpty || int.tryParse(value) == null || int.parse(value) <= 0) {
+                    return 'Masukkan jumlah yang valid';
+                  }
                   return null;
                 },
               ),
               TextFormField(
-                controller: _otherItemsController,
-                decoration: const InputDecoration(labelText: 'Pesanan Lainnya (opsional)'),
-              ),
-              TextFormField(
                 controller: _addressController,
-                decoration: const InputDecoration(labelText: 'Alamat (opsional)'),
+                decoration: const InputDecoration(labelText: 'Alamat (Opsional)'),
               ),
               TextFormField(
-                controller: _phoneController,
-                decoration: const InputDecoration(labelText: 'Nomor Telepon (opsional)'),
+                controller: _phoneNumberController,
+                decoration: const InputDecoration(labelText: 'No. Telepon (Opsional)'),
                 keyboardType: TextInputType.phone,
               ),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text('Tanggal: \\${_selectedDate.day.toString().padLeft(2, '0')}-\\${_selectedDate.month.toString().padLeft(2, '0')}-\\${_selectedDate.year}  Jam: \\${_selectedTime.format(context)}'),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.calendar_today),
-                    tooltip: 'Pilih Tanggal',
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _selectedDate,
-                        firstDate: DateTime(DateTime.now().year - 1),
-                        lastDate: DateTime(DateTime.now().year + 2),
-                      );
-                      if (picked != null) {
-                        setState(() => _selectedDate = picked);
-                      }
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.access_time),
-                    tooltip: 'Pilih Jam',
-                    onPressed: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: _selectedTime,
-                      );
-                      if (picked != null) {
-                        setState(() => _selectedTime = picked);
-                      }
-                    },
-                  ),
-                ],
+              TextFormField(
+                controller: _otherItemsController,
+                decoration: const InputDecoration(labelText: 'Item Lain (Opsional)'),
               ),
             ],
           ),
@@ -153,62 +121,12 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.of(context).pop(),
           child: const Text('Batal'),
         ),
         ElevatedButton(
-          onPressed: () async {
-            if (_formKey.currentState!.validate()) {
-              final name = _nameController.text.trim();
-              final address = _addressController.text.trim().isEmpty ? null : _addressController.text.trim();
-              final phone = _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim();
-
-              // Cek apakah pelanggan dengan nama ini sudah ada.
-              final existingCustomer = _customers.firstWhereOrNull(
-                (c) => c.name.toLowerCase() == name.toLowerCase(),
-              );
-
-              if (existingCustomer == null) {
-                // Pelanggan baru, simpan ke database lokal.
-                final newCustomer = Customer(
-                  name: name,
-                  address: address,
-                  phoneNumber: phone,
-                  createdAt: DateTime.now(),
-                  isSynced: false, // Tandai untuk sinkronisasi
-                );
-                await _dbHelper.upsertCustomer(newCustomer);
-              } else {
-                // Pelanggan sudah ada, cek apakah ada perubahan data.
-                if (existingCustomer.address != address || existingCustomer.phoneNumber != phone) {
-                  final updatedCustomer = existingCustomer.copyWith(
-                    address: address,
-                    phoneNumber: phone,
-                    isSynced: false, // Tandai untuk disinkronkan
-                  );
-                  await _dbHelper.updateCustomer(updatedCustomer);
-                }
-              }
-
-              // Kirim data pesanan ke pemanggil untuk diproses
-              widget.onSubmit(
-                customerName: name,
-                gallonQuantity: int.parse(_gallonController.text.trim()),
-                otherItems: _otherItemsController.text.trim().isEmpty ? null : _otherItemsController.text.trim(),
-                address: address,
-                phoneNumber: phone,
-                date: DateTime(
-                  _selectedDate.year,
-                  _selectedDate.month,
-                  _selectedDate.day,
-                  _selectedTime.hour,
-                  _selectedTime.minute,
-                ),
-              );
-              Navigator.pop(context);
-            }
-          },
-          child: const Text('Catat'),
+          onPressed: _submitForm,
+          child: Text(_isEditMode ? 'Simpan Perubahan' : 'Simpan'),
         ),
       ],
     );
