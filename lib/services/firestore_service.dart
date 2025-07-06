@@ -1,6 +1,6 @@
 // lib/services/firestore_service.dart
 
-import 'package:cloud_firestore/cloud_firestore.dart' hide Order; // <-- PERBAIKAN PENTING
+import 'package:cloud_firestore/cloud_firestore.dart' hide Order;
 import 'package:damiu/models/customer_model.dart';
 import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/models/daily_stock_model.dart';
@@ -11,7 +11,56 @@ import 'package:intl/intl.dart';
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // --- Operasi untuk Pesanan (Order) ---
+  // --- FUNGSI UTAMA UNTUK MENAMBAHKAN PESANAN BARU ---
+  /// Menambahkan pesanan baru dan secara otomatis membuat data pelanggan jika belum ada.
+  /// Ini menggunakan WriteBatch untuk memastikan kedua operasi berhasil atau gagal bersamaan.
+  Future<String?> addOrderAndUpsertCustomer(Order order) async {
+    try {
+      // 1. Cek apakah pelanggan dengan nama ini sudah ada
+      final querySnapshot = await _db
+          .collection('customers')
+          .where('name', isEqualTo: order.customerName)
+          .limit(1)
+          .get();
+
+      WriteBatch batch = _db.batch();
+
+      // 2. Jika pelanggan belum ada, siapkan untuk membuat pelanggan baru
+      if (querySnapshot.docs.isEmpty) {
+        final newCustomerRef = _db.collection('customers').doc();
+        final newCustomer = Customer(
+          firestoreId: newCustomerRef.id,
+          name: order.customerName ?? 'Tanpa Nama',
+          address: order.address,
+          phoneNumber: order.phoneNumber,
+          createdAt: DateTime.now(),
+          isSynced: true,
+        );
+        batch.set(newCustomerRef, newCustomer.toFirestore());
+      }
+
+      // 3. Siapkan untuk membuat dokumen pesanan baru
+      final newOrderRef = _db.collection('orders').doc();
+      batch.set(newOrderRef, order.toMapForFirestore());
+
+      // 4. Jalankan semua operasi dalam satu batch
+      await batch.commit();
+      
+      return newOrderRef.id; // Kembalikan ID pesanan yang baru dibuat
+    } catch (e) {
+      // Mengembalikan null untuk menandakan kegagalan
+      return null;
+    }
+  }
+
+  /// Fungsi addOrder lama sebaiknya tidak lagi dipanggil langsung dari UI.
+  @Deprecated('Gunakan addOrderAndUpsertCustomer untuk alur kerja yang benar')
+  Future<String> addOrder(Order order) async {
+    DocumentReference docRef = await _db.collection('orders').add(order.toMapForFirestore());
+    return docRef.id;
+  }
+  
+  // --- OPERASI LAINNYA ---
 
   Stream<List<Order>> getTodaysOrdersStream({DateTime? date}) {
     final now = date ?? DateTime.now();
@@ -25,16 +74,8 @@ class FirestoreService {
         .orderBy('createdAt', descending: false)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        return Order.fromFirestore(doc.data(), doc.id);
-      }).toList();
+      return snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList();
     });
-  }
-
-  Future<String> addOrder(Order order) async {
-    DocumentReference docRef =
-        await _db.collection('orders').add(order.toMapForFirestore());
-    return docRef.id;
   }
 
   Future<String?> deleteOrder(String firestoreId) async {
@@ -108,8 +149,6 @@ class FirestoreService {
     }
   }
 
-  // --- Operasi untuk Galon Kembali ---
-  
   Future<String?> addReturnedGallonLog({required int quantity, required String employeeUid}) async {
     try {
       await _db.collection('returned_gallons_log').add({
@@ -122,8 +161,6 @@ class FirestoreService {
       return e.toString();
     }
   }
-
-  // --- Operasi untuk Pelanggan (Customer) ---
 
   Future<String> addCustomer(Customer customer) async {
     final docRef = await _db.collection('customers').add(customer.toFirestore());
@@ -157,8 +194,6 @@ class FirestoreService {
     final snapshot = await _db.collection('orders').get();
     return snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList();
   }
-
-  // --- Operasi untuk Stok (Stock) ---
   
   Future<DailyStock?> getDailyStockOnce(DateTime date) async {
     String docId = DateFormat('yyyy-MM-dd').format(date);
@@ -235,8 +270,6 @@ class FirestoreService {
     }
   }
 
-  // --- Operasi untuk Penjualan Harian (Daily Sale) ---
-
   Stream<List<DailySale>> getDailySalesStream() {
     return _db
         .collection('daily_sales')
@@ -285,8 +318,6 @@ class FirestoreService {
     }
   }
 
-  // --- Operasi untuk Metadata Sinkronisasi ---
-
   Stream<List<DailySyncMetadataModel>> getDailySyncMetadataStream() {
     return _db.collection('daily_sync_metadata').orderBy('date', descending: true).snapshots().map((snapshot) {
       return snapshot.docs.map((doc) => DailySyncMetadataModel.fromFirestore(doc)).toList();
@@ -325,8 +356,6 @@ class FirestoreService {
       return e.toString();
     }
   }
-
-  // --- Stream Lainnya ---
 
   Stream<List<Order>> getOrdersStream() {
     return _db.collection('orders').snapshots().map((snapshot) {

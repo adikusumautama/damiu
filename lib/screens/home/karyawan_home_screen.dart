@@ -12,8 +12,7 @@ import 'package:damiu/services/sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:damiu/screens/home/widgets/add_order_dialog.dart';
 import 'package:damiu/screens/home/widgets/order_summary.dart';
-// --- PERBAIKAN FINAL: Menggunakan path impor absolut yang pasti benar ---
-import 'package:damiu/screens/home/widgets/orders_list.dart'; 
+import 'package:damiu/screens/home/widgets/orders_list.dart';
 import 'package:damiu/screens/home/widgets/set_stock_dialog.dart';
 import 'package:damiu/screens/home/widgets/resource_board.dart';
 import 'package:damiu/screens/home/widgets/profile_section.dart';
@@ -21,9 +20,6 @@ import 'package:damiu/screens/home/widgets/customer_book.dart';
 import 'package:damiu/main.dart' show resetDailyStockIfNeeded;
 import 'package:damiu/screens/other/local_sales_management_screen.dart';
 
-// ======================================================================
-// VIEWMODEL
-// ======================================================================
 class KaryawanHomeViewModel extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
   final DatabaseHelper _dbHelper = DatabaseHelper();
@@ -153,9 +149,11 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       isSynced: _isOnline,
     );
     if (_isOnline) {
-      await _firestoreService.addOrder(newOrder);
+      // --- PERUBAHAN: Memanggil fungsi baru yang lebih cerdas ---
+      await _firestoreService.addOrderAndUpsertCustomer(newOrder);
     } else {
       await _dbHelper.insertOrder(newOrder);
+      // Logika untuk upsert customer di lokal bisa ditambahkan di sini jika diperlukan
       await _loadLocalOrders();
     }
     if(hasListeners) notifyListeners();
@@ -192,9 +190,6 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   }
 }
 
-// ======================================================================
-// WIDGET (UI)
-// ======================================================================
 class KaryawanHomeScreen extends StatelessWidget {
   const KaryawanHomeScreen({super.key});
 

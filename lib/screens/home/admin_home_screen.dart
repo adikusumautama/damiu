@@ -1,14 +1,13 @@
 // lib/screens/home/admin_home_screen.dart
 
 import 'package:damiu/models/order_model.dart';
-import 'package:damiu/models/user_model.dart';
 import 'package:damiu/screens/admin/admin_dashboard_screen.dart';
 import 'package:damiu/screens/admin/admin_firestore_data_view_screen.dart';
 import 'package:damiu/screens/admin/admin_prediction_view_screen.dart';
 import 'package:damiu/screens/admin/admin_sync_metadata_screen.dart';
-import 'package:damiu/screens/home/widgets/add_order_dialog.dart'; // <-- Tambahkan impor ini
+import 'package:damiu/screens/home/widgets/add_order_dialog.dart';
 import 'package:damiu/services/auth_service.dart';
-import 'package:damiu/services/firestore_service.dart'; // <-- Tambahkan impor ini
+import 'package:damiu/services/firestore_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -21,10 +20,9 @@ class AdminHomeScreen extends StatefulWidget {
 
 class _AdminHomeScreenState extends State<AdminHomeScreen> {
   int _selectedIndex = 0;
-  final FirestoreService _firestoreService = FirestoreService(); // <-- Tambahkan ini
+  final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
 
-  // Daftar semua halaman admin
   static const List<Widget> _adminPages = <Widget>[
     AdminDashboardScreen(),
     AdminPredictionViewScreen(),
@@ -53,11 +51,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     }
   }
 
-  // --- FUNGSI BARU UNTUK MENAMPILKAN DIALOG DAN MENYIMPAN PESANAN ---
   void _showAddOrderDialog() {
     final User? currentUser = _authService.getCurrentUser();
     if (currentUser == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mendapatkan info admin.')));
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mendapatkan info admin.')));
         return;
     }
 
@@ -86,12 +83,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               phoneNumber: phoneNumber,
               status: OrderStatus.pending,
               createdAt: finalDateTime,
-              employeeUid: currentUser.uid, // Dicatat oleh UID admin
-              isSynced: true, // Langsung dianggap sinkron karena admin selalu online
+              employeeUid: currentUser.uid,
+              isSynced: true,
             );
             
             try {
-              await _firestoreService.addOrder(newOrder);
+              // --- PERUBAHAN: Memanggil fungsi baru yang lebih cerdas ---
+              await _firestoreService.addOrderAndUpsertCustomer(newOrder);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Pesanan baru berhasil ditambahkan!')),
@@ -127,8 +125,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       body: Center(
         child: _adminPages.elementAt(_selectedIndex),
       ),
-      // --- TOMBOL AKSI BARU UNTUK ADMIN ---
-      floatingActionButton: _selectedIndex == 0 // Hanya muncul di tab Dasbor
+      floatingActionButton: _selectedIndex == 0
           ? FloatingActionButton(
               onPressed: _showAddOrderDialog,
               tooltip: 'Catat Pesanan Baru',
