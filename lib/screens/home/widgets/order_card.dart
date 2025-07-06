@@ -1,5 +1,3 @@
-// lib/screens/home/widgets/order_card.dart
-
 import 'package:damiu/models/order_model.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -8,10 +6,8 @@ class OrderCard extends StatelessWidget {
   final Order order;
   final VoidCallback onStartDelivery;
   final VoidCallback onCompleteDelivery;
-  // --- FUNGSI BARU UNTUK CRUD ---
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-
 
   const OrderCard({
     super.key,
@@ -41,12 +37,12 @@ class OrderCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     order.customerName ?? 'Tanpa Nama',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                // --- TOMBOL OPSI BARU ---
-                if (order.status != OrderStatus.delivered) // Hanya tampil jika belum selesai
+                if (order.status != OrderStatus.delivered)
                   PopupMenuButton<String>(
                     onSelected: (value) {
                       if (value == 'edit') {
@@ -55,7 +51,8 @@ class OrderCard extends StatelessWidget {
                         onDelete();
                       }
                     },
-                    itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                    itemBuilder: (BuildContext context) =>
+                        <PopupMenuEntry<String>>[
                       const PopupMenuItem<String>(
                         value: 'edit',
                         child: ListTile(
@@ -67,7 +64,8 @@ class OrderCard extends StatelessWidget {
                         value: 'delete',
                         child: ListTile(
                           leading: Icon(Icons.delete_outline, color: Colors.red),
-                          title: Text('Hapus Pesanan', style: TextStyle(color: Colors.red)),
+                          title: Text('Hapus Pesanan',
+                              style: TextStyle(color: Colors.red)),
                         ),
                       ),
                     ],
@@ -79,7 +77,9 @@ class OrderCard extends StatelessWidget {
               TextSpan(
                 style: const TextStyle(fontSize: 16, height: 1.5),
                 children: [
-                  const TextSpan(text: 'Jumlah: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(
+                      text: 'Jumlah: ',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   TextSpan(text: '${order.gallonQuantity ?? 0} Galon'),
                 ],
               ),
@@ -91,7 +91,9 @@ class OrderCard extends StatelessWidget {
                   TextSpan(
                     style: const TextStyle(fontSize: 16, height: 1.5),
                     children: [
-                      const TextSpan(text: 'Alamat: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const TextSpan(
+                          text: 'Alamat: ',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                       TextSpan(text: order.address),
                     ],
                   ),
@@ -104,13 +106,14 @@ class OrderCard extends StatelessWidget {
                   TextSpan(
                     style: const TextStyle(fontSize: 16, height: 1.5),
                     children: [
-                      const TextSpan(text: 'Telepon: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const TextSpan(
+                          text: 'Telepon: ',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                       TextSpan(text: order.phoneNumber),
                     ],
                   ),
                 ),
               ),
-            // --- TAMBAHAN: Menampilkan Item Lain ---
             if (order.otherItems != null && order.otherItems!.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8.0),
@@ -118,28 +121,35 @@ class OrderCard extends StatelessWidget {
                   TextSpan(
                     style: const TextStyle(fontSize: 16, height: 1.5),
                     children: [
-                      const TextSpan(text: 'Item Lain: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const TextSpan(
+                          text: 'Item Lain: ',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                       TextSpan(text: order.otherItems),
                     ],
                   ),
                 ),
               ),
-            // --- TAMBAHAN: Menampilkan Tanggal Pesanan Dibuat ---
             if (order.createdAt != null)
               Padding(
                 padding: const EdgeInsets.only(top: 12.0),
                 child: Text(
                   'Dibuat: ${DateFormat('EEEE, dd MMM yyyy - HH:mm', 'id_ID').format(order.createdAt!)}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                  style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                      fontStyle: FontStyle.italic),
                 ),
               ),
-            // --- TAMBAHAN: Menampilkan Tanggal Pesanan Selesai ---
             if (order.deliveredAt != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4.0),
                 child: Text(
                   'Selesai: ${DateFormat('EEEE, dd MMM yyyy - HH:mm', 'id_ID').format(order.deliveredAt!)}',
-                  style: TextStyle(fontSize: 12, color: Colors.green.shade800, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.green.shade800,
+                      fontStyle: FontStyle.italic,
+                      fontWeight: FontWeight.w600),
                 ),
               ),
             const SizedBox(height: 16),
@@ -178,7 +188,8 @@ class OrderCard extends StatelessWidget {
       avatar: Icon(chipIcon, color: Colors.white, size: 18),
       label: Text(status ?? 'Status Tidak Diketahui'),
       backgroundColor: chipColor,
-      labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      labelStyle:
+          const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
     );
   }
 
@@ -190,24 +201,22 @@ class OrderCard extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         if (order.status == OrderStatus.pending)
-          ElevatedButton.icon(
-            icon: const Icon(Icons.delivery_dining_outlined, size: 18),
-            label: const Text('Mulai Antar'),
+          ElevatedButton(
             onPressed: onStartDelivery,
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange.shade700,
-              foregroundColor: Colors.white,
+              backgroundColor: Colors.orange,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
             ),
+            child: const Text('Mulai Antar'),
           ),
         if (order.status == OrderStatus.inDelivery)
-          ElevatedButton.icon(
-            icon: const Icon(Icons.check, size: 18),
-            label: const Text('Selesaikan'),
+          ElevatedButton(
             onPressed: onCompleteDelivery,
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade700,
-              foregroundColor: Colors.white,
+              backgroundColor: Colors.green,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
             ),
+            child: const Text('Selesaikan'),
           ),
       ],
     );

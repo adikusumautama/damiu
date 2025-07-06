@@ -107,6 +107,31 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
     );
   }
 
+  void _showDeleteAllConfirmDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Semua Pesanan?'),
+        content: const Text(
+            'Anda yakin ingin menghapus SEMUA data pesanan? Tindakan ini tidak dapat dibatalkan.'),
+        actions: [
+          TextButton(
+            child: const Text('Batal'),
+            onPressed: () => Navigator.of(ctx).pop(),
+          ),
+          TextButton(
+            child: const Text('Hapus Semua', style: TextStyle(color: Colors.red)),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final error = await _firestoreService.deleteAllOrders();
+              if (mounted) _handleApiResponse(error, 'Semua pesanan berhasil dihapus.');
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   void _handleApiResponse(String? error, String? successMessage) {
     if (!mounted) return;
     if (error != null) {
@@ -125,6 +150,29 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
     return Scaffold(
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Filter Status',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                ),
+                TextButton.icon(
+                  icon: const Icon(Icons.delete_sweep_outlined, color: Colors.red),
+                  label: const Text('Hapus Semua', style: TextStyle(color: Colors.red)),
+                  onPressed: _showDeleteAllConfirmDialog,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           _buildFilterChips(),
           Expanded(
             child: StreamBuilder<List<Order>>(
@@ -169,7 +217,7 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
   Widget _buildFilterChips() {
     final statuses = ['Semua', OrderStatus.pending, OrderStatus.inDelivery, OrderStatus.delivered];
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12.0),
       child: Wrap(
         spacing: 8.0,
         runSpacing: 4.0,

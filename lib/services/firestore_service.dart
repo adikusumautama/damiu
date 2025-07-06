@@ -51,6 +51,20 @@ class FirestoreService {
     }
   }
 
+  Future<String?> deleteAllOrders() async {
+    try {
+      final snapshot = await _db.collection('orders').get();
+      final batch = _db.batch();
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      return null; // Sukses
+    } catch (e) {
+      return 'Gagal menghapus semua pesanan: ${e.toString()}';
+    }
+  }
+
   // --- FUNGSI CRUD PELANGGAN ---
   Future<String> addCustomer(Customer customer) async {
     final docRef = await _db.collection('customers').add(customer.toFirestore());
