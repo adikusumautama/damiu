@@ -1,5 +1,4 @@
 // lib/services/sync_service.dart
-
 import 'dart:async';
 import 'package:damiu/models/customer_model.dart';
 import 'package:damiu/models/order_model.dart';
@@ -13,8 +12,7 @@ class SyncService {
   Future<void> syncCustomers() async {
     final unsyncedCustomers = await _dbHelper.getUnsyncedCustomers();
     if (unsyncedCustomers.isEmpty) return;
-
-    for (Customer customer in unsyncedCustomers) {
+    for (var customer in unsyncedCustomers) {
       if (customer.name.trim().isEmpty) continue;
       try {
         if (customer.firestoreId == null || customer.firestoreId!.isEmpty) {
@@ -24,46 +22,34 @@ class SyncService {
           await _firestoreService.updateCustomer(customer);
           await _dbHelper.markCustomerAsSynced(customer.id!, customer.firestoreId!);
         }
-      } catch (e) { /* Sebaiknya gunakan logger */ }
+      } catch (e) { /* Log error */ }
     }
   }
 
   Future<void> syncOrders() async {
     final unsyncedOrders = await _dbHelper.getUnsyncedOrders();
     if (unsyncedOrders.isEmpty) return;
-
     for (var order in unsyncedOrders) {
       try {
         if (order.firestoreId == null || order.firestoreId!.isEmpty) {
-          // --- PERBAIKAN: Memanggil fungsi yang benar ---
-          final newFirestoreId = await _firestoreService.addOrderAndUpsertCustomer(order);
-          if (newFirestoreId != null) {
-            await _dbHelper.markOrderAsSynced(order.id!, newFirestoreId);
-          }
+          final newId = await _firestoreService.addOrderAndUpsertCustomer(order);
+          if (newId != null) await _dbHelper.markOrderAsSynced(order.id!, newId);
         } else if (order.status == OrderStatus.delivered) {
           final error = await _firestoreService.completeOrderTransaction(order);
-          if (error == null) {
-            await _dbHelper.markOrderAsSynced(order.id!, order.firestoreId!);
-          }
+          if (error == null) await _dbHelper.markOrderAsSynced(order.id!, order.firestoreId!);
         } else {
           final error = await _firestoreService.updateOrderStatus(order.firestoreId!, order.status ?? '');
-          if (error == null) {
-            await _dbHelper.markOrderAsSynced(order.id!, order.firestoreId!);
-          }
+          if (error == null) await _dbHelper.markOrderAsSynced(order.id!, order.firestoreId!);
         }
-      } catch (e) { /* Sebaiknya gunakan logger */ }
+      } catch (e) { /* Log error */ }
     }
   }
   
   Future<void> pullAllDataFromFirestore() async {
     final customers = await _firestoreService.getAllCustomersOnce();
-    for (final customer in customers) {
-      await _dbHelper.upsertCustomer(customer);
-    }
+    for (final c in customers) { await _dbHelper.upsertCustomer(c); }
     final orders = await _firestoreService.getAllOrdersOnce();
-    for (final order in orders) {
-      await _dbHelper.upsertOrder(order);
-    }
+    for (final o in orders) { await _dbHelper.upsertOrder(o); }
   }
 
   StreamSubscription listenToFirestoreChanges() {
@@ -71,9 +57,7 @@ class SyncService {
       _firestoreService.getCustomersStream().first,
       _firestoreService.getOrdersStream().first,
       _firestoreService.getStocksStream().first,
-    ]).listen((_) async {
-      await pullAllDataFromFirestore();
-    });
+    ]).listen((_) async => await pullAllDataFromFirestore());
   }
 
   Future<void> syncAllData() async {
