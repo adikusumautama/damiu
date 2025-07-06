@@ -1,6 +1,6 @@
 // lib/services/firestore_service.dart
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' hide Order; // <-- PERBAIKAN PENTING
 import 'package:damiu/models/customer_model.dart';
 import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/models/daily_stock_model.dart';
@@ -163,8 +163,7 @@ class FirestoreService {
   Future<DailyStock?> getDailyStockOnce(DateTime date) async {
     String docId = DateFormat('yyyy-MM-dd').format(date);
     final doc = await _db.collection('daily_stock_levels').doc(docId).get();
-    if (doc.exists) {
-      // --- PERBAIKAN: Menggunakan fromMap ---
+    if (doc.exists && doc.data() != null) {
       return DailyStock.fromMap(doc.data()!, doc.id);
     }
     return null;
@@ -177,8 +176,7 @@ class FirestoreService {
         .doc(docId)
         .snapshots()
         .map((snapshot) {
-      if (snapshot.exists) {
-        // --- PERBAIKAN: Menggunakan fromMap ---
+      if (snapshot.exists && snapshot.data() != null) {
         return DailyStock.fromMap(snapshot.data()!, snapshot.id);
       }
       return null;
@@ -273,7 +271,6 @@ class FirestoreService {
     }
   }
 
-  // --- PERBAIKAN: Fungsi ini ditambahkan kembali untuk admin screen ---
   Future<String?> deleteAllDailySales() async {
     try {
       final snapshot = await _db.collection('daily_sales').get();
@@ -306,7 +303,6 @@ class FirestoreService {
     }
   }
 
-  // --- PERBAIKAN: Fungsi ini ditambahkan kembali untuk admin screen ---
   Future<String?> deleteDailySyncMetadata(String docId) async {
     try {
       await _db.collection('daily_sync_metadata').doc(docId).delete();
@@ -316,7 +312,6 @@ class FirestoreService {
     }
   }
   
-  // --- PERBAIKAN: Fungsi ini ditambahkan kembali untuk admin screen ---
   Future<String?> deleteAllDailySyncMetadata() async {
     try {
       final snapshot = await _db.collection('daily_sync_metadata').get();
@@ -341,8 +336,7 @@ class FirestoreService {
 
   Stream<List<DailyStock>> getStocksStream() {
     return _db.collection('daily_stock_levels').snapshots().map((snapshot) {
-      // --- PERBAIKAN: Menggunakan fromMap ---
-      return snapshot.docs.map((doc) => DailyStock.fromMap(doc.data(), doc.id)).toList();
+      return snapshot.docs.map((doc) => DailyStock.fromMap(doc.data()!, doc.id)).toList();
     });
   }
   
