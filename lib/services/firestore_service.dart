@@ -81,6 +81,29 @@ class FirestoreService {
     }
   }
   
+  Future<String?> deleteCustomer(String firestoreId) async {
+    try {
+      await _db.collection('customers').doc(firestoreId).delete();
+      return null;
+    } catch (e) {
+      return 'Gagal menghapus pelanggan: ${e.toString()}';
+    }
+  }
+
+  Future<String?> deleteAllCustomers() async {
+    try {
+      final snapshot = await _db.collection('customers').get();
+      final batch = _db.batch();
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      return null; // Sukses
+    } catch (e) {
+      return 'Gagal menghapus semua pelanggan: ${e.toString()}';
+    }
+  }
+
   // --- FUNGSI CRUD REKAP PENJUALAN ---
   Future<String?> deleteDailySale(String firestoreId) async {
     try {

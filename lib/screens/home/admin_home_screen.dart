@@ -2,10 +2,10 @@
 
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/screens/admin/admin_dashboard_screen.dart';
+import 'package:damiu/screens/admin/admin_customer_management_screen.dart';
 import 'package:damiu/screens/admin/admin_firestore_data_view_screen.dart';
 import 'package:damiu/screens/admin/admin_order_management_screen.dart'; // <-- Impor halaman baru
 import 'package:damiu/screens/admin/admin_prediction_view_screen.dart';
-import 'package:damiu/screens/home/widgets/customer_book.dart';
 import 'package:damiu/screens/home/widgets/add_order_dialog.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/firestore_service.dart';
@@ -30,7 +30,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     AdminPredictionViewScreen(),
     AdminOrderManagementScreen(), // Halaman baru untuk CRUD Pesanan
     AdminFirestoreDataWidget(), // Halaman untuk Rekap Penjualan
-    const CustomerBook(isOnline: true), // Halaman Buku Pelanggan
+    const AdminCustomerManagementScreen(), // Halaman baru untuk CRUD Pelanggan
   ];
 
   void _onItemTapped(int index) {
@@ -50,7 +50,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       case 3:
         return 'Rekap Penjualan'; // Judul baru
       case 4:
-        return 'Buku Pelanggan';
+        return 'Kelola Pelanggan';
       default:
         return 'Admin';
     }
