@@ -19,6 +19,7 @@ import 'package:damiu/screens/home/widgets/profile_section.dart';
 import 'package:damiu/screens/home/widgets/customer_book.dart';
 import 'package:damiu/main.dart' show resetDailyStockIfNeeded;
 import 'package:damiu/screens/other/local_data_management_screen.dart';
+
 class KaryawanHomeViewModel extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
   final DatabaseHelper _dbHelper = DatabaseHelper();
@@ -42,18 +43,25 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     }
     return _localOrders.where((o) => o.status == _selectedStatus).toList();
   }
+
   DailyStock? get localStock => _localStock;
   bool get isSyncing => _isSyncing;
 
-  KaryawanHomeViewModel() { _init(); }
+  KaryawanHomeViewModel() {
+    _init();
+  }
 
   void _init() async {
     await _loadLocalStock();
     await _loadCurrentUser();
     await _loadLocalOrders();
     _initConnectivity();
-    await resetDailyStockIfNeeded(isOnline: _isOnline, employeeUid: _currentUser?.uid, activeDate: DateTime.now());
-    if(hasListeners) notifyListeners();
+    await resetDailyStockIfNeeded(
+      isOnline: _isOnline,
+      employeeUid: _currentUser?.uid,
+      activeDate: DateTime.now(),
+    );
+    if (hasListeners) notifyListeners();
   }
 
   @override
@@ -63,12 +71,20 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   }
 
   void _initConnectivity() {
-    Connectivity().checkConnectivity().then((r) => _updateConnectionStatus(r, isInitial: true));
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(_updateConnectionStatus);
+    Connectivity().checkConnectivity().then(
+      (r) => _updateConnectionStatus(r, isInitial: true),
+    );
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+      _updateConnectionStatus,
+    );
   }
 
-  Future<void> _updateConnectionStatus(List<ConnectivityResult> results, {bool isInitial = false}) async {
-    final currentlyOnline = results.isNotEmpty && results.first != ConnectivityResult.none;
+  Future<void> _updateConnectionStatus(
+    List<ConnectivityResult> results, {
+    bool isInitial = false,
+  }) async {
+    final currentlyOnline =
+        results.isNotEmpty && results.first != ConnectivityResult.none;
     if (currentlyOnline == _isOnline && !isInitial) return;
     _isOnline = currentlyOnline;
     if (!_isOnline) {
@@ -87,24 +103,27 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       await _loadLocalOrders();
       await _loadLocalStock();
     } finally {
-      if(hasListeners) { _isSyncing = false; notifyListeners(); }
+      if (hasListeners) {
+        _isSyncing = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<void> _loadCurrentUser() async {
     final user = _authService.getCurrentUser();
     if (user != null) _currentUser = await _authService.getUserModel(user.uid);
-    if(hasListeners) notifyListeners();
+    if (hasListeners) notifyListeners();
   }
 
   Future<void> _loadLocalOrders() async {
     _localOrders = await _dbHelper.getUnsyncedOrders();
-    if(hasListeners) notifyListeners();
+    if (hasListeners) notifyListeners();
   }
 
   Future<void> _loadLocalStock() async {
     _localStock = await _dbHelper.getDailyStock(DateTime.now());
-    if(hasListeners) notifyListeners();
+    if (hasListeners) notifyListeners();
   }
 
   void onItemTapped(int index) {
@@ -117,9 +136,17 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<String?> onUpdateOrder(String firestoreId, Order updatedOrder) async => await _firestoreService.updateOrder(firestoreId, updatedOrder);
-  Future<String?> onDeleteOrder(String firestoreId) async => await _firestoreService.deleteOrder(firestoreId);
-  Future<String?> onStartDelivery(Order order) async => (order.firestoreId == null) ? "Order ID tidak valid." : await _firestoreService.updateOrderStatus(order.firestoreId!, OrderStatus.inDelivery);
+  Future<String?> onUpdateOrder(String firestoreId, Order updatedOrder) async =>
+      await _firestoreService.updateOrder(firestoreId, updatedOrder);
+  Future<String?> onDeleteOrder(String firestoreId) async =>
+      await _firestoreService.deleteOrder(firestoreId);
+  Future<String?> onStartDelivery(Order order) async =>
+      (order.firestoreId == null)
+      ? "Order ID tidak valid."
+      : await _firestoreService.updateOrderStatus(
+          order.firestoreId!,
+          OrderStatus.inDelivery,
+        );
   Future<String?> onCompleteDelivery(Order order) async {
     if (_isOnline) {
       // Mode Online: Lakukan transaksi lengkap ke Firestore
@@ -127,9 +154,15 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     } else {
       // Mode Offline: Perbarui status di database lokal untuk disinkronkan nanti
       if (order.firestoreId != null) {
-        final localOrder = await _dbHelper.getOrderByFirestoreId(order.firestoreId!);
+        final localOrder = await _dbHelper.getOrderByFirestoreId(
+          order.firestoreId!,
+        );
         if (localOrder != null && localOrder.id != null) {
-          await _dbHelper.updateOrderStatus(localOrder.id!, OrderStatus.delivered, setDeliveredTime: true);
+          await _dbHelper.updateOrderStatus(
+            localOrder.id!,
+            OrderStatus.delivered,
+            setDeliveredTime: true,
+          );
           await _loadLocalOrders(); // Muat ulang daftar pesanan lokal
           return null; // Sukses
         }
@@ -137,24 +170,54 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       return 'Pesanan tidak ditemukan di database lokal untuk diselesaikan saat offline.';
     }
   }
-  
-  Future<void> onAddOrder({required String customerName, required int gallonQuantity, String? otherItems, String? address, String? phoneNumber, required DateTime date}) async {
+
+  Future<void> onAddOrder({
+    required String customerName,
+    required int gallonQuantity,
+    String? otherItems,
+    String? address,
+    String? phoneNumber,
+    required DateTime date,
+  }) async {
     final now = DateTime.now();
-    final finalDateTime = (date.hour == 0 && date.minute == 0) ? DateTime(date.year, date.month, date.day, now.hour, now.minute, now.second) : date;
-    final newOrder = Order(customerName: customerName, gallonQuantity: gallonQuantity, otherItems: otherItems, address: address, phoneNumber: phoneNumber, status: OrderStatus.pending, createdAt: finalDateTime, employeeUid: _currentUser?.uid, isSynced: _isOnline);
+    final finalDateTime = (date.hour == 0 && date.minute == 0)
+        ? DateTime(
+            date.year,
+            date.month,
+            date.day,
+            now.hour,
+            now.minute,
+            now.second,
+          )
+        : date;
+    final newOrder = Order(
+      customerName: customerName,
+      gallonQuantity: gallonQuantity,
+      otherItems: otherItems,
+      address: address,
+      phoneNumber: phoneNumber,
+      status: OrderStatus.pending,
+      createdAt: finalDateTime,
+      employeeUid: _currentUser?.uid,
+      isSynced: _isOnline,
+    );
     if (_isOnline) {
       await _firestoreService.addOrderAndUpsertCustomer(newOrder);
     } else {
       await _dbHelper.insertOrder(newOrder);
       await _loadLocalOrders();
     }
-    if(hasListeners) notifyListeners();
+    if (hasListeners) notifyListeners();
   }
 
   Future<void> completeLocalOrder(Order order) async {
-      if(order.id == null) return;
-      await _dbHelper.updateOrderStatus(order.id!, OrderStatus.delivered, setDeliveredTime: true);
-      await _loadLocalOrders();
+    if (order.id == null) return;
+    await _dbHelper.updateOrderStatus(
+      order.id!,
+      OrderStatus.delivered,
+      setDeliveredTime: true,
+    );
+    await _loadLocalOrders();
   }
 }
 
@@ -169,116 +232,324 @@ class KaryawanHomeScreen extends StatelessWidget {
           return Scaffold(
             appBar: AppBar(
               title: Text(_getAppBarTitle(viewModel.selectedIndex)),
-              actions: [ if (viewModel.isSyncing) const Padding(padding: EdgeInsets.only(right: 16.0), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))) ],
-              bottom: !viewModel.isOnline ? PreferredSize(preferredSize: const Size.fromHeight(24.0), child: Container(color: Colors.orange.shade700, width: double.infinity, padding: const EdgeInsets.all(4), child: const Text('Mode Offline', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 12)))) : null,
+              actions: [
+                if (viewModel.isSyncing)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 16.0),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 3,
+                      ),
+                    ),
+                  ),
+              ],
+              bottom: !viewModel.isOnline
+                  ? PreferredSize(
+                      preferredSize: const Size.fromHeight(24.0),
+                      child: Container(
+                        color: Colors.orange.shade700,
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(4),
+                        child: const Text(
+                          'Mode Offline',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ),
+                    )
+                  : null,
             ),
-            body: IndexedStack(index: viewModel.selectedIndex, children: _buildPages(context, viewModel)),
+            body: IndexedStack(
+              index: viewModel.selectedIndex,
+              children: _buildPages(context, viewModel),
+            ),
             bottomNavigationBar: BottomNavigationBar(
-              items: const [BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'), BottomNavigationBarItem(icon: Icon(Icons.book), label: 'Pelanggan'), BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil')],
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.home),
+                  label: 'Beranda',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.book),
+                  label: 'Pelanggan',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.person),
+                  label: 'Profil',
+                ),
+              ],
               currentIndex: viewModel.selectedIndex,
               onTap: viewModel.onItemTapped,
             ),
-            floatingActionButton: viewModel.selectedIndex == 0 ? FloatingActionButton(onPressed: () => _showAddOrderDialog(context, viewModel), tooltip: 'Catat Pesanan', child: const Icon(Icons.add)) : null,
+            floatingActionButton: viewModel.selectedIndex == 0
+                ? FloatingActionButton(
+                    onPressed: () => _showAddOrderDialog(context, viewModel),
+                    tooltip: 'Catat Pesanan',
+                    child: const Icon(Icons.add),
+                  )
+                : null,
           );
         },
       ),
     );
   }
 
-  String _getAppBarTitle(int index) => ['Beranda', 'Buku Pelanggan', 'Profil'][index];
+  String _getAppBarTitle(int index) =>
+      ['Beranda', 'Buku Pelanggan', 'Profil'][index];
 
-  List<Widget> _buildPages(BuildContext context, KaryawanHomeViewModel viewModel) {
-    Widget summaryWidget = viewModel.isOnline ? StreamBuilder<List<Order>>(stream: viewModel._firestoreService.getTodaysOrdersStream(), builder: (_, s) => OrderSummary(orders: s.data ?? [], isOnline: true)) : OrderSummary(orders: viewModel.localOrders, isOnline: false);
-    return [
-      Column(children: [
-        summaryWidget,
-        if (viewModel.isOnline)
-          StreamBuilder<DailyStock?>(
-            stream: viewModel._firestoreService.getDailyStockStream(DateTime.now()),
-            builder: (context, snapshot) => ResourceBoard(stock: snapshot.data),
+  List<Widget> _buildPages(
+    BuildContext context,
+    KaryawanHomeViewModel viewModel,
+  ) {
+    Widget summaryWidget = viewModel.isOnline
+        ? StreamBuilder<List<Order>>(
+            stream: viewModel._firestoreService.getTodaysOrdersStream(),
+            builder: (_, s) =>
+                OrderSummary(orders: s.data ?? [], isOnline: true),
           )
-        else
-          ResourceBoard(stock: viewModel.localStock),
-        _buildFilterChips(context, viewModel),
-        Expanded(child: viewModel.isOnline ? OrdersStreamWidget(
-          status: viewModel.selectedStatus,
-          onStartDelivery: (o) async { final e = await viewModel.onStartDelivery(o); if (context.mounted) _handleApiError(context, e); },
-          onCompleteDelivery: (o) async { final e = await viewModel.onCompleteDelivery(o); if (context.mounted) _handleApiError(context, e); },
-          onEdit: (o) => _showAddOrderDialog(context, viewModel, orderToEdit: o),
-          onDelete: (o) => _showDeleteConfirmDialog(context, viewModel, o),
-        ) : OrdersLocalWidget(
-          orders: viewModel.localOrders, // Getter ini sudah memfilter data
-          onStartDelivery: (o) async { if (o.id != null) { await viewModel._dbHelper.updateOrderStatus(o.id!, OrderStatus.inDelivery); await viewModel._loadLocalOrders(); } },
-          onCompleteDelivery: (o) async { if (o.id != null) await viewModel.completeLocalOrder(o); },
-          onEdit: (o) {},
-          onDelete: (o) {},
-        )),
-      ]),
+        : OrderSummary(orders: viewModel.localOrders, isOnline: false);
+    return [
+      Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Card(
+              elevation: 2,
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  summaryWidget,
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  viewModel.isOnline
+                      ? StreamBuilder<DailyStock?>(
+                          stream: viewModel._firestoreService
+                              .getDailyStockStream(DateTime.now()),
+                          builder: (context, snapshot) =>
+                              ResourceBoard(stock: snapshot.data),
+                        )
+                      : ResourceBoard(stock: viewModel.localStock),
+                ],
+              ),
+            ),
+          ),
+          _buildFilterChips(context, viewModel),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => viewModel.syncData(),
+              child: viewModel.isOnline
+                  ? OrdersStreamWidget(
+                      status: viewModel.selectedStatus,
+                      onStartDelivery: (o) async {
+                        final e = await viewModel.onStartDelivery(o);
+                        if (context.mounted) _handleApiError(context, e);
+                      },
+                      onCompleteDelivery: (o) async {
+                        final e = await viewModel.onCompleteDelivery(o);
+                        if (context.mounted) _handleApiError(context, e);
+                      },
+                      onEdit: (o) => _showAddOrderDialog(
+                        context,
+                        viewModel,
+                        orderToEdit: o,
+                      ),
+                      onDelete: (o) =>
+                          _showDeleteConfirmDialog(context, viewModel, o),
+                    )
+                  : OrdersLocalWidget(
+                      orders: viewModel
+                          .localOrders, // Getter ini sudah memfilter data
+                      onStartDelivery: (o) async {
+                        if (o.id != null) {
+                          await viewModel._dbHelper.updateOrderStatus(
+                            o.id!,
+                            OrderStatus.inDelivery,
+                          );
+                          await viewModel._loadLocalOrders();
+                        }
+                      },
+                      onCompleteDelivery: (o) async {
+                        if (o.id != null) await viewModel.completeLocalOrder(o);
+                      },
+                      onEdit: (o) {},
+                      onDelete: (o) {},
+                    ),
+            ),
+          ),
+        ],
+      ),
       CustomerBook(isOnline: viewModel.isOnline),
-      ProfileSection(user: viewModel.currentUser, onLogout: () => _showLogoutConfirmDialog(context, viewModel)),
+      ProfileSection(
+        user: viewModel.currentUser,
+        onLogout: () => _showLogoutConfirmDialog(context, viewModel),
+      ),
     ];
   }
 
-  Widget _buildFilterChips(BuildContext context, KaryawanHomeViewModel viewModel) {
-    final statuses = ['Semua', OrderStatus.pending, OrderStatus.inDelivery, OrderStatus.delivered];
+  Widget _buildFilterChips(
+    BuildContext context,
+    KaryawanHomeViewModel viewModel,
+  ) {
+    final statuses = [
+      'Semua',
+      OrderStatus.pending,
+      OrderStatus.inDelivery,
+      OrderStatus.delivered,
+    ];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-      child: Wrap(
-        spacing: 8.0,
-        runSpacing: 4.0,
-        alignment: WrapAlignment.center,
-        children: statuses.map((status) {
-          return FilterChip(
-            label: Text(status),
-            selected: viewModel.selectedStatus == status,
-            onSelected: (bool selected) {
-              if (selected) {
-                viewModel.onFilterChanged(status);
-              }
-            },
-            selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
-          );
-        }).toList(),
+      child: SizedBox(
+        height: 40,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          children: statuses.map((status) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+              child: FilterChip(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+
+                label: Text(status),
+                selected: viewModel.selectedStatus == status,
+                onSelected: (bool selected) {
+                  if (selected) {
+                    viewModel.onFilterChanged(status);
+                  }
+                },
+                selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
+              ),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
 
-  void _showAddOrderDialog(BuildContext context, KaryawanHomeViewModel viewModel, {Order? orderToEdit}) {
-    showDialog(context: context, builder: (ctx) => AddOrderDialog(orderToEdit: orderToEdit, onSubmit: ({required customerName, required gallonQuantity, otherItems, address, phoneNumber, required date}) async {
-      if (orderToEdit != null) {
-        final updatedOrder = Order(firestoreId: orderToEdit.firestoreId, customerName: customerName, gallonQuantity: gallonQuantity, otherItems: otherItems, address: address, phoneNumber: phoneNumber, status: orderToEdit.status, createdAt: orderToEdit.createdAt, employeeUid: viewModel.currentUser?.uid);
-        final e = await viewModel.onUpdateOrder(orderToEdit.firestoreId!, updatedOrder);
-        if(context.mounted) _handleApiError(context, e, successMessage: 'Pesanan berhasil diperbarui!');
-      } else {
-        await viewModel.onAddOrder(customerName: customerName, gallonQuantity: gallonQuantity, otherItems: otherItems, address: address, phoneNumber: phoneNumber, date: date);
-        if(context.mounted) _handleApiError(context, null, successMessage: 'Pesanan baru berhasil ditambahkan!');
-      }
-    }));
+  void _showAddOrderDialog(
+    BuildContext context,
+    KaryawanHomeViewModel viewModel, {
+    Order? orderToEdit,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AddOrderDialog(
+        orderToEdit: orderToEdit,
+        onSubmit:
+            ({
+              required customerName,
+              required gallonQuantity,
+              otherItems,
+              address,
+              phoneNumber,
+              required date,
+            }) async {
+              if (orderToEdit != null) {
+                final updatedOrder = Order(
+                  firestoreId: orderToEdit.firestoreId,
+                  customerName: customerName,
+                  gallonQuantity: gallonQuantity,
+                  otherItems: otherItems,
+                  address: address,
+                  phoneNumber: phoneNumber,
+                  status: orderToEdit.status,
+                  createdAt: orderToEdit.createdAt,
+                  employeeUid: viewModel.currentUser?.uid,
+                );
+                final e = await viewModel.onUpdateOrder(
+                  orderToEdit.firestoreId!,
+                  updatedOrder,
+                );
+                if (context.mounted)
+                  _handleApiError(
+                    context,
+                    e,
+                    successMessage: 'Pesanan berhasil diperbarui!',
+                  );
+              } else {
+                await viewModel.onAddOrder(
+                  customerName: customerName,
+                  gallonQuantity: gallonQuantity,
+                  otherItems: otherItems,
+                  address: address,
+                  phoneNumber: phoneNumber,
+                  date: date,
+                );
+                if (context.mounted)
+                  _handleApiError(
+                    context,
+                    null,
+                    successMessage: 'Pesanan baru berhasil ditambahkan!',
+                  );
+              }
+            },
+      ),
+    );
   }
 
-  void _showDeleteConfirmDialog(BuildContext context, KaryawanHomeViewModel viewModel, Order order) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text('Konfirmasi Hapus'), content: Text('Anda yakin ingin menghapus pesanan untuk "${order.customerName}"?'), actions: [
-      TextButton(child: const Text('Batal'), onPressed: () => Navigator.of(ctx).pop()),
-      TextButton(child: const Text('Hapus', style: TextStyle(color: Colors.red)), onPressed: () async {
-        Navigator.of(ctx).pop();
-        if (order.firestoreId != null) {
-          final e = await viewModel.onDeleteOrder(order.firestoreId!);
-          if(context.mounted) _handleApiError(context, e, successMessage: 'Pesanan berhasil dihapus.');
-        }
-      }),
-    ]));
+  void _showDeleteConfirmDialog(
+    BuildContext context,
+    KaryawanHomeViewModel viewModel,
+    Order order,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Konfirmasi Hapus'),
+        content: Text(
+          'Anda yakin ingin menghapus pesanan untuk "${order.customerName}"?',
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Batal'),
+            onPressed: () => Navigator.of(ctx).pop(),
+          ),
+          TextButton(
+            child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              if (order.firestoreId != null) {
+                final e = await viewModel.onDeleteOrder(order.firestoreId!);
+                if (context.mounted)
+                  _handleApiError(
+                    context,
+                    e,
+                    successMessage: 'Pesanan berhasil dihapus.',
+                  );
+              }
+            },
+          ),
+        ],
+      ),
+    );
   }
 
-  void _handleApiError(BuildContext context, String? error, {String? successMessage}) {
+  void _handleApiError(
+    BuildContext context,
+    String? error, {
+    String? successMessage,
+  }) {
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $error'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $error'), backgroundColor: Colors.red),
+      );
     } else if (successMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(successMessage), backgroundColor: Colors.green));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(successMessage), backgroundColor: Colors.green),
+      );
     }
   }
 
   // --- PERBAIKAN: Mengganti BottomSheet dengan Dialog Konfirmasi ---
-  void _showLogoutConfirmDialog(BuildContext context, KaryawanHomeViewModel viewModel) {
+  void _showLogoutConfirmDialog(
+    BuildContext context,
+    KaryawanHomeViewModel viewModel,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
