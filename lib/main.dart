@@ -1,3 +1,7 @@
+// lib/main.dart
+
+import 'dart:async'; // <-- Tambahkan impor ini
+import 'package:damiu/firebase_options.dart';
 import 'package:damiu/models/user_model.dart';
 import 'package:damiu/screens/auth/login_screen.dart';
 import 'package:damiu/screens/auth/register_screen.dart';
@@ -6,22 +10,109 @@ import 'package:damiu/screens/home/karyawan_home_screen.dart';
 import 'package:damiu/screens/home/pelanggan_home_screen.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/firestore_service.dart';
-import 'package:damiu/services/database_helper.dart';
-import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/date_symbol_data_local.dart'; // Impor untuk initializeDateFormatting
-import 'package:shared_preferences/shared_preferences.dart';
-import 'firebase_options.dart'; // Pastikan file ini ada setelah flutterfire configure
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
-// Consider defining roles as constants or an enum
-class UserRoles {
-  static const String admin = 'admin';
-  static const String karyawan = 'karyawan';
-  static const String pelanggan = 'pelanggan';
+// ======================================================================
+// PERBAIKAN FINAL: Menggunakan runZonedGuarded untuk menangkap silent crash
+// ======================================================================
+void main() {
+  runZonedGuarded<Future<void>>(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await initializeDateFormatting('id_ID', null);
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    // Menangkap error spesifik dari framework Flutter
+    FlutterError.onError = (FlutterErrorDetails details) {
+      debugPrint('--- Flutter Error ---');
+      debugPrint(details.exceptionAsString());
+      if (details.stack != null) {
+        debugPrint(details.stack.toString());
+      }
+      debugPrint('---------------------');
+    };
+
+    runApp(const MainApp());
+  }, (error, stack) {
+    // Menangkap SEMUA error lain yang tidak tertangani (penyebab silent crash)
+    debugPrint('--- Uncaught Zoned Error ---');
+    debugPrint(error.toString());
+    debugPrint(stack.toString());
+    debugPrint('----------------------------');
+  });
 }
 
-// Widget untuk mengelola tampilan Login atau Register
+class MainApp extends StatelessWidget {
+  const MainApp({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Aylaqua',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      home: const AuthWrapper(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: AuthService().authStateChanges,
+      builder: (context, snapshot) {
+        // Menunggu koneksi stream
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+
+        // Pengguna sudah login
+        if (snapshot.hasData && snapshot.data != null) {
+          return FutureBuilder<UserModel?>(
+            future: AuthService().getUserModel(snapshot.data!.uid),
+            builder: (context, userModelSnapshot) {
+              if (userModelSnapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                );
+              }
+              if (userModelSnapshot.hasError || !userModelSnapshot.hasData || userModelSnapshot.data == null) {
+                // Jika terjadi error atau data pengguna tidak ditemukan, arahkan kembali ke halaman login
+                // Ini juga mencegah crash jika dokumen user dihapus dari Firestore
+                return const AuthToggle();
+              }
+
+              final userModel = userModelSnapshot.data!;
+              switch (userModel.role) {
+                case 'admin':
+                  return const AdminHomeScreen();
+                case 'karyawan':
+                  return const KaryawanHomeScreen();
+                case 'pelanggan':
+                  return const PelangganHomeScreen();
+                default:
+                  return const AuthToggle();
+              }
+            },
+          );
+        }
+
+        // Pengguna belum login
+        return const AuthToggle();
+      },
+    );
+  }
+}
+
 class AuthToggle extends StatefulWidget {
   const AuthToggle({super.key});
 
@@ -48,121 +139,39 @@ class _AuthToggleState extends State<AuthToggle> {
   }
 }
 
-// Widget untuk memeriksa status autentikasi dan mengarahkan pengguna
-class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key});
+// Fungsi ini sekarang lebih baik dipanggil dari dalam ViewModel setelah login,
+// bukan dari main.dart, agar lebih aman.
+// Saya membiarkannya di sini jika Anda membutuhkannya di tempat lain.
+Future<void> resetDailyStockIfNeeded({
+  required bool isOnline,
+  required String? employeeUid,
+  required DateTime activeDate,
+}) async {
+  if (!isOnline || employeeUid == null) {
+    return;
+  }
+  
+  final firestoreService = FirestoreService();
+  final todayStock = await firestoreService.getDailyStockOnce(activeDate);
 
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: AuthService().authStateChanges,
-      builder: (context, snapshot) {
-        // Pengguna sudah login
-        if (snapshot.connectionState == ConnectionState.active) {
-          User? user = snapshot.data;
-          if (user != null) {
-            // Ambil data peran dari Firestore
-            return FutureBuilder<UserModel?>(
-              future: AuthService().getUserModel(user.uid),
-              builder: (context, userModelSnapshot) {
-                if (userModelSnapshot.connectionState ==
-                    ConnectionState.waiting) {
-                  return const Scaffold(
-                    body: Center(child: CircularProgressIndicator()),
-                  );
-                }
-                if (userModelSnapshot.hasError ||
-                    !userModelSnapshot.hasData ||
-                    userModelSnapshot.data == null) {
-                  // Error atau tidak ada data user, mungkin logout atau arahkan ke error page
-                  // Jika terjadi error atau data pengguna tidak ditemukan, arahkan kembali ke halaman login/register
-                  print(
-                    "Error fetching user model or no data: ${userModelSnapshot.error}. Redirecting to AuthToggle.",
-                  );
-                  // Sebaiknya logout jika data user tidak ditemukan
-                  // Future.microtask(() => AuthService().signOut()); // Hindari setState selama build
-                  return const AuthToggle(); // Kembali ke halaman login/register
-                }
+  // Hanya reset jika dokumen stok untuk hari ini belum ada
+  if (todayStock == null) {
+    final yesterday = activeDate.subtract(const Duration(days: 1));
+    final yesterdayStock = await firestoreService.getDailyStockOnce(yesterday);
+    
+    // Stok awal hari ini adalah sisa stok dari hari kemarin
+    final initialStockToday = yesterdayStock?.currentStock ?? 0;
 
-                final userModel = userModelSnapshot.data!;
-                switch (userModel.role) {
-                  case UserRoles.admin:
-                    return const AdminHomeScreen();
-                  case UserRoles.karyawan:
-                    return const KaryawanHomeScreen();
-                  case UserRoles.pelanggan:
-                    return const PelangganHomeScreen();
-                  default:
-                    print(
-                      "Unknown role: ${userModel.role}. Redirecting to AuthToggle.",
-                    );
-                    return const AuthToggle(); // Peran tidak diketahui, kembali ke login/register
-                }
-              },
-            );
-          } else {
-            // Pengguna belum login, tampilkan halaman login/register
-            return const AuthToggle();
-          }
-        }
-        // Menunggu koneksi stream
-        return const Scaffold(body: Center(child: CircularProgressIndicator()));
-      },
+    await firestoreService.setInitialStock(
+      date: activeDate,
+      filledStock: initialStockToday,
+      updatedByUid: employeeUid,
     );
-  }
-}
-
-Future<void> resetDailyStockIfNeeded(
-    {required bool isOnline, required String? employeeUid, required DateTime activeDate}) async {
-  final prefs = await SharedPreferences.getInstance();
-  final today = activeDate;
-  final todayStr = today.toIso8601String().split('T').first;
-  final lastReset = prefs.getString('last_stock_reset_date');
-  if (lastReset == todayStr) return; // Sudah reset hari ini
-
-  // Reset stok harian (currentStock, initialStock, initialEmptyStock ke 0)
-  if (isOnline) {
-    await FirestoreService()
-        .setInitialStock(date: today, filledStock: 0, updatedByUid: employeeUid ?? '-');
-    await FirestoreService()
-        .setInitialEmptyStock(date: today, emptyStock: 0, updatedByUid: employeeUid ?? '-');
-  } else {
-    await DatabaseHelper()
-        .setInitialStock(date: today, filledStock: 0, updatedByUid: employeeUid ?? '-');
-    await DatabaseHelper()
-        .setInitialEmptyStock(date: today, emptyStock: 0, updatedByUid: employeeUid ?? '-');
-  }
-  await prefs.setString('last_stock_reset_date', todayStr);
-}
-
-void main() async {
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.dumpErrorToConsole(details);
-    // Tambahan: print ke console agar error selalu terlihat
-    print('FLUTTER ERROR:');
-    print(details.exceptionAsString());
-    if (details.stack != null) {
-      print(details.stack);
-    }
-  };
-  WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting(
-    'id_ID',
-    null,
-  ); // Tambahkan ini untuk format tanggal Indonesia
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  runApp(const MainApp());
-}
-
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      title: 'Depot Air Minum',
-      home: AuthWrapper(),
-      debugShowCheckedModeBanner: false, // Opsional
+    // Set stok galon kosong ke 0
+    await firestoreService.setInitialEmptyStock(
+      date: activeDate,
+      emptyStock: 0,
+      updatedByUid: employeeUid,
     );
   }
 }
