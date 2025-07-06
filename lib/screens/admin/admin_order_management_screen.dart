@@ -146,8 +146,6 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
           }
 
           final orders = snapshot.data!;
-          // Urutkan dari yang terbaru ke terlama
-          orders.sort((a, b) => b.createdAt!.compareTo(a.createdAt!));
 
           return ListView.builder(
             padding: const EdgeInsets.all(8.0),

@@ -213,7 +213,10 @@ class FirestoreService {
   }
 
   Stream<List<Order>> getOrdersStream() {
-    return _db.collection('orders').snapshots().map((snapshot) => snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList());
+    return _db.collection('orders')
+        .orderBy('createdAt', descending: true) // Mengurutkan dari yang terbaru
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList());
   }
 
   Stream<List<DailyStock>> getStocksStream() {

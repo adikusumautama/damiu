@@ -28,24 +28,34 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
     setState(() => _isLoading = true);
     final employeeUid = _authService.getCurrentUser()?.uid;
     if (employeeUid == null) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Pengguna tidak ditemukan.')));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: Pengguna tidak ditemukan.')),
+        );
       setState(() => _isLoading = false);
       return;
     }
-    
+
     final quantity = int.parse(_gallonQuantityController.text);
     final stockError = await _firestoreService.adjustCurrentStock(quantity);
-    await _firestoreService.addReturnedGallonLog(quantity: quantity, employeeUid: employeeUid);
+    await _firestoreService.addReturnedGallonLog(
+      quantity: quantity,
+      employeeUid: employeeUid,
+    );
 
     if (mounted) {
       if (stockError == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Berhasil memperbarui data stok!')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Berhasil memperbarui data stok!')),
+        );
         Navigator.pop(context, true);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal memperbarui data: $stockError')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memperbarui data: $stockError')),
+        );
       }
     }
-    if(mounted) setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
@@ -59,23 +69,42 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Catat jumlah galon kosong yang diterima/kembali dari pelanggan.', style: Theme.of(context).textTheme.titleMedium, textAlign: TextAlign.center),
+              Text(
+                'Catat jumlah galon kosong yang diterima/kembali dari pelanggan.',
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 24),
               TextFormField(
                 controller: _gallonQuantityController,
                 autofocus: true,
-                decoration: const InputDecoration(labelText: 'Jumlah Galon Kosong', border: OutlineInputBorder(), prefixIcon: Icon(Icons.inventory_2_outlined)),
+                decoration: const InputDecoration(
+                  labelText: 'Jumlah Galon Kosong',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.inventory_2_outlined),
+                ),
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                validator: (v) => (v == null || v.isEmpty || int.tryParse(v) == null || int.parse(v) <= 0) ? 'Masukkan jumlah valid' : null,
+                validator: (v) =>
+                    (v == null ||
+                        v.isEmpty ||
+                        int.tryParse(v) == null ||
+                        int.parse(v) <= 0)
+                    ? 'Masukkan jumlah valid'
+                    : null,
               ),
               const SizedBox(height: 24),
-              _isLoading ? const Center(child: CircularProgressIndicator()) : ElevatedButton.icon(
-                icon: const Icon(Icons.save_outlined),
-                label: const Text('Simpan & Tambah Stok'),
-                onPressed: _saveReturnedGallons,
-                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), textStyle: const TextStyle(fontSize: 16)),
-              ),
+              _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ElevatedButton.icon(
+                      icon: const Icon(Icons.save_outlined),
+                      label: const Text('Simpan & Tambah Stok'),
+                      onPressed: _saveReturnedGallons,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        textStyle: const TextStyle(fontSize: 16),
+                      ),
+                    ),
             ],
           ),
         ),

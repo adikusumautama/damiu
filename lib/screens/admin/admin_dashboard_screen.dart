@@ -85,7 +85,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Widget build(BuildContext context) {
     return StreamBuilder<List<dynamic>>(
       stream: CombineLatestStream.list([
-        _firestoreService.getOrdersStream(),
+        _firestoreService.getTodaysOrdersStream(), // PERUBAHAN: Mengambil data pesanan hari ini saja untuk ringkasan
         _firestoreService.getDailyStockStream(DateTime.now()),
       ]),
       builder: (context, snapshot) {
@@ -102,7 +102,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         final List<Order> orders = snapshot.data![0] as List<Order>;
         final DailyStock? stock = snapshot.data![1] as DailyStock?;
 
-        final int totalOrders = orders.length;
+        final int totalOrdersToday = orders.length;
         final int deliveredOrdersCount = orders.where((o) => o.status == OrderStatus.delivered).length;
         final int pendingOrdersCount = orders.where((o) => o.status == OrderStatus.pending).length;
         final int inDeliveryOrdersCount = orders.where((o) => o.status == OrderStatus.inDelivery).length;
@@ -119,7 +119,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildSummarySection(totalOrders, deliveredOrdersCount),
+                _buildSummarySection(totalOrdersToday, deliveredOrdersCount),
                 const SizedBox(height: 20),
                 _buildPredictionCard(),
                 const SizedBox(height: 20),
