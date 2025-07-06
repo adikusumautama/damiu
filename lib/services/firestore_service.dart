@@ -276,13 +276,15 @@ class FirestoreService {
         .orderBy('date', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => DailySale.fromMap(doc.data())).toList();
+      return snapshot.docs.map((doc) {
+        return DailySale.fromMap(doc.data(), doc.id);
+      }).toList();
     });
   }
   
   Future<List<DailySale>> getDailySalesOnce() async {
     final snapshot = await _db.collection('daily_sales').orderBy('date', descending: false).get();
-    return snapshot.docs.map((doc) => DailySale.fromMap(doc.data())).toList();
+    return snapshot.docs.map((doc) => DailySale.fromMap(doc.data(), doc.id)).toList();
   }
   
   Future<String?> upsertDailySale(DailySale sale) async {
@@ -373,7 +375,7 @@ class FirestoreService {
     final docId = DateFormat('yyyy-MM-dd').format(date);
     return _db.collection('daily_sales').doc(docId).snapshots().map((snapshot) {
       if (!snapshot.exists || snapshot.data() == null) return null;
-      return DailySale.fromMap(snapshot.data()!);
+      return DailySale.fromMap(snapshot.data()!, snapshot.id);
     });
   }
 }
