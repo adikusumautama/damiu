@@ -1,4 +1,5 @@
 // lib/screens/home/karyawan_home_screen.dart
+
 import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -19,12 +20,17 @@ import 'widgets/customer_book.dart';
 import '../../main.dart' show resetDailyStockIfNeeded;
 import '../other/local_sales_management_screen.dart';
 
+// ======================================================================
+// VIEWMODEL: BERISI SEMUA STATE DAN LOGIKA BISNIS
+// ======================================================================
 class KaryawanHomeViewModel extends ChangeNotifier {
+  // Services
   final FirestoreService _firestoreService = FirestoreService();
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final SyncService _syncService = SyncService();
   final AuthService _authService = AuthService();
 
+  // State
   int _selectedIndex = 0;
   bool _isOnline = true;
   UserModel? _currentUser;
@@ -32,12 +38,14 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   bool _isSyncing = false;
   late StreamSubscription _connectivitySubscription;
 
+  // Getters untuk diakses oleh UI
   int get selectedIndex => _selectedIndex;
   bool get isOnline => _isOnline;
   UserModel? get currentUser => _currentUser;
   List<Order> get localOrders => _localOrders;
   bool get isSyncing => _isSyncing;
 
+  // Inisialisasi
   KaryawanHomeViewModel() {
     _init();
   }
@@ -60,6 +68,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     super.dispose();
   }
 
+  // --- LOGIKA KONEKTIVITAS DAN SINKRONISASI ---
   void _initConnectivity() {
     Connectivity().checkConnectivity().then((results) {
       _updateConnectionStatus(results, isInitial: true);
@@ -94,6 +103,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     }
   }
 
+  // --- LOGIKA DATA ---
   Future<void> _loadCurrentUser() async {
     final user = _authService.getCurrentUser();
     if (user != null) {
@@ -112,6 +122,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- LOGIKA AKSI (Callbacks untuk UI) ---
   Future<String?> onStartDelivery(Order order) async {
     if(order.firestoreId == null) return "Order ID tidak valid.";
     return await _firestoreService.updateOrderStatus(order.firestoreId!, OrderStatus.inDelivery);
@@ -120,7 +131,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   Future<String?> onCompleteDelivery(Order order) async {
     return await _firestoreService.completeOrderTransaction(order);
   }
-  
+
   Future<void> onAddOrder({
     required String customerName,
     required int gallonQuantity,
@@ -160,7 +171,6 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       builder: (ctx) => const SetStockDialog(),
     );
     if (result != null && _currentUser != null) {
-       // --- PERBAIKAN: Menambahkan pengecekan mounted ---
       if (!context.mounted) return;
       if (_isOnline) {
         await _firestoreService.setInitialStock(
@@ -180,11 +190,15 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   }
   
   Future<void> completeLocalOrder(Order order) async {
+      if(order.id == null) return;
       await _dbHelper.updateOrderStatus(order.id!, OrderStatus.delivered, setDeliveredTime: true);
       await _loadLocalOrders();
   }
 }
 
+// ======================================================================
+// WIDGET (UI): BERSIH DAN HANYA FOKUS PADA TAMPILAN
+// ======================================================================
 class KaryawanHomeScreen extends StatelessWidget {
   const KaryawanHomeScreen({super.key});
 
@@ -245,7 +259,6 @@ class KaryawanHomeScreen extends StatelessWidget {
   }
 
   List<Widget> _buildPages(BuildContext context, KaryawanHomeViewModel viewModel) {
-    // --- PERBAIKAN: getTodaysOrdersStream digunakan di sini ---
     Widget summaryWidget = viewModel.isOnline
         ? StreamBuilder<List<Order>>(
             stream: viewModel._firestoreService.getTodaysOrdersStream(),
@@ -314,7 +327,14 @@ class KaryawanHomeScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AddOrderDialog(
-        onSubmit: ({ customerName, gallonQuantity, otherItems, address, phoneNumber, date }) async {
+        onSubmit: ({
+          required String customerName,
+          required int gallonQuantity,
+          String? otherItems,
+          String? address,
+          String? phoneNumber,
+          required DateTime date,
+        }) async {
           await viewModel.onAddOrder(
             customerName: customerName,
             gallonQuantity: gallonQuantity,
