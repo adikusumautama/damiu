@@ -3,19 +3,21 @@
 import 'package:flutter/material.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/services/firestore_service.dart';
-// import 'order_card.dart'; // Pastikan path ini sesuai dengan struktur proyek Anda
-import 'order_card.dart'; // Pastikan path ini sesuai dengan struktur proyek Anda
-
+import 'package:damiu/screens/home/widgets/order_card.dart';
 
 class OrdersStreamWidget extends StatelessWidget {
   const OrdersStreamWidget({
     super.key,
     required this.onStartDelivery,
     required this.onCompleteDelivery,
+    required this.onEdit, // Tambahkan ini
+    required this.onDelete, // Tambahkan ini
   });
 
   final Function(Order) onStartDelivery;
   final Function(Order) onCompleteDelivery;
+  final Function(Order) onEdit;
+  final Function(Order) onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -23,22 +25,13 @@ class OrdersStreamWidget extends StatelessWidget {
     return StreamBuilder<List<Order>>(
       stream: firestoreService.getTodaysOrdersStream(),
       builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Center(
-              child:
-                  Text('Belum ada pesanan untuk hari ini.', style: TextStyle(fontSize: 16, color: Colors.grey)));
-        }
+        if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData || snapshot.data!.isEmpty) return const Center(child: Text('Belum ada pesanan untuk hari ini.', style: TextStyle(fontSize: 16, color: Colors.grey)));
 
         final orders = snapshot.data!;
-
         return ListView.builder(
-          padding: const EdgeInsets.only(bottom: 80), // Padding untuk Floating Action Button
+          padding: const EdgeInsets.only(bottom: 80),
           itemCount: orders.length,
           itemBuilder: (ctx, index) {
             final order = orders[index];
@@ -46,6 +39,8 @@ class OrdersStreamWidget extends StatelessWidget {
               order: order,
               onStartDelivery: () => onStartDelivery(order),
               onCompleteDelivery: () => onCompleteDelivery(order),
+              onEdit: () => onEdit(order), // Teruskan ke OrderCard
+              onDelete: () => onDelete(order), // Teruskan ke OrderCard
             );
           },
         );
@@ -60,24 +55,22 @@ class OrdersLocalWidget extends StatelessWidget {
     required this.orders,
     required this.onStartDelivery,
     required this.onCompleteDelivery,
+    required this.onEdit, // Tambahkan ini
+    required this.onDelete, // Tambahkan ini
   });
 
   final List<Order> orders;
   final Function(Order) onStartDelivery;
   final Function(Order) onCompleteDelivery;
+  final Function(Order) onEdit;
+  final Function(Order) onDelete;
 
   @override
   Widget build(BuildContext context) {
-    if (orders.isEmpty) {
-      return const Center(
-        child: Text(
-          'Tidak ada data pesanan lokal.',
-          style: TextStyle(fontSize: 16, color: Colors.grey),
-        ),
-      );
-    }
+    if (orders.isEmpty) return const Center(child: Text('Tidak ada data pesanan lokal.', style: TextStyle(fontSize: 16, color: Colors.grey)));
+    
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 80), // Padding untuk Floating Action Button
+      padding: const EdgeInsets.only(bottom: 80),
       itemCount: orders.length,
       itemBuilder: (ctx, index) {
         final order = orders[index];
@@ -85,6 +78,8 @@ class OrdersLocalWidget extends StatelessWidget {
           order: order,
           onStartDelivery: () => onStartDelivery(order),
           onCompleteDelivery: () => onCompleteDelivery(order),
+          onEdit: () => onEdit(order), // Teruskan ke OrderCard
+          onDelete: () => onDelete(order), // Teruskan ke OrderCard
         );
       },
     );

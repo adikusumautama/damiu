@@ -115,6 +115,15 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- LOGIKA CRUD BARU ---
+  Future<String?> onUpdateOrder(String firestoreId, Order updatedOrder) async {
+    return await _firestoreService.updateOrder(firestoreId, updatedOrder);
+  }
+
+  Future<String?> onDeleteOrder(String firestoreId) async {
+    return await _firestoreService.deleteOrder(firestoreId);
+  }
+
   Future<String?> onStartDelivery(Order order) async {
     if(order.firestoreId == null) return "Order ID tidak valid.";
     return await _firestoreService.updateOrderStatus(order.firestoreId!, OrderStatus.inDelivery);
@@ -149,11 +158,9 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       isSynced: _isOnline,
     );
     if (_isOnline) {
-      // --- PERUBAHAN: Memanggil fungsi baru yang lebih cerdas ---
       await _firestoreService.addOrderAndUpsertCustomer(newOrder);
     } else {
       await _dbHelper.insertOrder(newOrder);
-      // Logika untuk upsert customer di lokal bisa ditambahkan di sini jika diperlukan
       await _loadLocalOrders();
     }
     if(hasListeners) notifyListeners();
@@ -278,6 +285,9 @@ class KaryawanHomeScreen extends StatelessWidget {
                       final error = await viewModel.onCompleteDelivery(order);
                       if (context.mounted) _handleApiError(context, error);
                     },
+                    // --- HUBUNGKAN AKSI CRUD KE UI ---
+                    onEdit: (order) => _showAddOrderDialog(context, viewModel, orderToEdit: order),
+                    onDelete: (order) => _showDeleteConfirmDialog(context, viewModel, order),
                   )
                 : OrdersLocalWidget(
                     orders: viewModel.localOrders,
@@ -290,6 +300,9 @@ class KaryawanHomeScreen extends StatelessWidget {
                        if (order.id == null) return;
                        await viewModel.completeLocalOrder(order);
                     },
+                    // CRUD untuk mode offline bisa ditambahkan di sini
+                    onEdit: (order) {}, // Placeholder
+                    onDelete: (order) {}, // Placeholder
                   ),
           ),
         ],
@@ -320,10 +333,12 @@ class KaryawanHomeScreen extends StatelessWidget {
     ];
   }
 
-  void _showAddOrderDialog(BuildContext context, KaryawanHomeViewModel viewModel) {
+  // --- FUNGSI DIALOG YANG DIPERBARUI ---
+  void _showAddOrderDialog(BuildContext context, KaryawanHomeViewModel viewModel, {Order? orderToEdit}) {
     showDialog(
       context: context,
       builder: (ctx) => AddOrderDialog(
+        orderToEdit: orderToEdit, // Kirim data pesanan jika ini mode edit
         onSubmit: ({
           required String customerName,
           required int gallonQuantity,
@@ -332,23 +347,72 @@ class KaryawanHomeScreen extends StatelessWidget {
           String? phoneNumber,
           required DateTime date,
         }) async {
-          await viewModel.onAddOrder(
-            customerName: customerName,
-            gallonQuantity: gallonQuantity,
-            otherItems: otherItems,
-            address: address,
-            phoneNumber: phoneNumber,
-            date: date,
-          );
+          if (orderToEdit != null) {
+            // --- LOGIKA UPDATE ---
+            final updatedOrder = Order(
+              firestoreId: orderToEdit.firestoreId,
+              customerName: customerName,
+              gallonQuantity: gallonQuantity,
+              otherItems: otherItems,
+              address: address,
+              phoneNumber: phoneNumber,
+              status: orderToEdit.status, // Pertahankan status
+              createdAt: orderToEdit.createdAt, // Pertahankan tanggal dibuat
+              employeeUid: viewModel.currentUser?.uid,
+            );
+            final error = await viewModel.onUpdateOrder(orderToEdit.firestoreId!, updatedOrder);
+            if(context.mounted) _handleApiError(context, error, successMessage: 'Pesanan berhasil diperbarui!');
+          } else {
+            // --- LOGIKA CREATE ---
+            await viewModel.onAddOrder(
+              customerName: customerName,
+              gallonQuantity: gallonQuantity,
+              otherItems: otherItems,
+              address: address,
+              phoneNumber: phoneNumber,
+              date: date,
+            );
+             if(context.mounted) _handleApiError(context, null, successMessage: 'Pesanan baru berhasil ditambahkan!');
+          }
         },
       ),
     );
   }
 
-  void _handleApiError(BuildContext context, String? error) {
+  void _showDeleteConfirmDialog(BuildContext context, KaryawanHomeViewModel viewModel, Order order) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Konfirmasi Hapus'),
+        content: Text('Anda yakin ingin menghapus pesanan untuk "${order.customerName}"?'),
+        actions: [
+          TextButton(
+            child: const Text('Batal'),
+            onPressed: () => Navigator.of(ctx).pop(),
+          ),
+          TextButton(
+            child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              if (order.firestoreId != null) {
+                final error = await viewModel.onDeleteOrder(order.firestoreId!);
+                if(context.mounted) _handleApiError(context, error, successMessage: 'Pesanan berhasil dihapus.');
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleApiError(BuildContext context, String? error, {String? successMessage}) {
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $error'), backgroundColor: Colors.red),
+      );
+    } else if (successMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(successMessage), backgroundColor: Colors.green),
       );
     }
   }

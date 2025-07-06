@@ -11,12 +11,11 @@ import 'package:intl/intl.dart';
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // --- FUNGSI UTAMA UNTUK MENAMBAHKAN PESANAN BARU ---
+  // --- FUNGSI CRUD UNTUK PESANAN ---
+
   /// Menambahkan pesanan baru dan secara otomatis membuat data pelanggan jika belum ada.
-  /// Ini menggunakan WriteBatch untuk memastikan kedua operasi berhasil atau gagal bersamaan.
   Future<String?> addOrderAndUpsertCustomer(Order order) async {
     try {
-      // 1. Cek apakah pelanggan dengan nama ini sudah ada
       final querySnapshot = await _db
           .collection('customers')
           .where('name', isEqualTo: order.customerName)
@@ -25,12 +24,11 @@ class FirestoreService {
 
       WriteBatch batch = _db.batch();
 
-      // 2. Jika pelanggan belum ada, siapkan untuk membuat pelanggan baru
-      if (querySnapshot.docs.isEmpty) {
+      if (querySnapshot.docs.isEmpty && order.customerName != null && order.customerName!.isNotEmpty) {
         final newCustomerRef = _db.collection('customers').doc();
         final newCustomer = Customer(
           firestoreId: newCustomerRef.id,
-          name: order.customerName ?? 'Tanpa Nama',
+          name: order.customerName!,
           address: order.address,
           phoneNumber: order.phoneNumber,
           createdAt: DateTime.now(),
@@ -39,29 +37,38 @@ class FirestoreService {
         batch.set(newCustomerRef, newCustomer.toFirestore());
       }
 
-      // 3. Siapkan untuk membuat dokumen pesanan baru
       final newOrderRef = _db.collection('orders').doc();
       batch.set(newOrderRef, order.toMapForFirestore());
-
-      // 4. Jalankan semua operasi dalam satu batch
-      await batch.commit();
       
-      return newOrderRef.id; // Kembalikan ID pesanan yang baru dibuat
+      await batch.commit();
+      return newOrderRef.id;
     } catch (e) {
-      // Mengembalikan null untuk menandakan kegagalan
       return null;
     }
   }
 
-  /// Fungsi addOrder lama sebaiknya tidak lagi dipanggil langsung dari UI.
-  @Deprecated('Gunakan addOrderAndUpsertCustomer untuk alur kerja yang benar')
-  Future<String> addOrder(Order order) async {
-    DocumentReference docRef = await _db.collection('orders').add(order.toMapForFirestore());
-    return docRef.id;
+  /// Memperbarui detail sebuah dokumen pesanan di Firestore.
+  Future<String?> updateOrder(String firestoreId, Order updatedOrder) async {
+    try {
+      await _db.collection('orders').doc(firestoreId).update(updatedOrder.toMapForFirestore());
+      return null;
+    } catch (e) {
+      return 'Gagal memperbarui pesanan: ${e.toString()}';
+    }
   }
-  
-  // --- OPERASI LAINNYA ---
 
+  /// Menghapus dokumen pesanan dari Firestore.
+  Future<String?> deleteOrder(String firestoreId) async {
+    try {
+      await _db.collection('orders').doc(firestoreId).delete();
+      return null;
+    } catch (e) {
+      return 'Gagal menghapus pesanan: ${e.toString()}';
+    }
+  }
+
+  // --- OPERASI LAINNYA ---
+  
   Stream<List<Order>> getTodaysOrdersStream({DateTime? date}) {
     final now = date ?? DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day);
@@ -76,15 +83,6 @@ class FirestoreService {
         .map((snapshot) {
       return snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList();
     });
-  }
-
-  Future<String?> deleteOrder(String firestoreId) async {
-    try {
-      await _db.collection('orders').doc(firestoreId).delete();
-      return null;
-    } catch (e) {
-      return e.toString();
-    }
   }
 
   Future<String?> updateOrderStatus(String firestoreId, String status, {bool setDeliveredTime = false}) async {
@@ -148,6 +146,8 @@ class FirestoreService {
       return 'Gagal menyelesaikan transaksi pesanan: ${e.toString()}';
     }
   }
+
+  // --- Sisa Fungsi Lainnya (Tidak ada perubahan) ---
 
   Future<String?> addReturnedGallonLog({required int quantity, required String employeeUid}) async {
     try {
@@ -276,9 +276,7 @@ class FirestoreService {
         .orderBy('date', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        return DailySale.fromMap(doc.data(), doc.id);
-      }).toList();
+      return snapshot.docs.map((doc) => DailySale.fromMap(doc.data(), doc.id)).toList();
     });
   }
   
@@ -291,15 +289,6 @@ class FirestoreService {
     try {
       String docId = DateFormat('yyyy-MM-dd').format(sale.date);
       await _db.collection('daily_sales').doc(docId).set(sale.toMap(), SetOptions(merge: true));
-      return null;
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  Future<String?> deleteDailySale(String firestoreId) async {
-    try {
-      await _db.collection('daily_sales').doc(firestoreId).delete();
       return null;
     } catch (e) {
       return e.toString();

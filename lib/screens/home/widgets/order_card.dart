@@ -8,12 +8,18 @@ class OrderCard extends StatelessWidget {
   final Order order;
   final VoidCallback onStartDelivery;
   final VoidCallback onCompleteDelivery;
+  // --- FUNGSI BARU UNTUK CRUD ---
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
 
   const OrderCard({
     super.key,
     required this.order,
     required this.onStartDelivery,
     required this.onCompleteDelivery,
+    required this.onEdit,
+    required this.onDelete,
   });
 
   @override
@@ -39,10 +45,33 @@ class OrderCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Text(
-                  DateFormat('HH:mm').format(order.createdAt ?? DateTime.now()),
-                  style: const TextStyle(color: Colors.grey, fontSize: 14),
-                ),
+                // --- TOMBOL OPSI BARU ---
+                if (order.status != OrderStatus.delivered) // Hanya tampil jika belum selesai
+                  PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        onEdit();
+                      } else if (value == 'delete') {
+                        onDelete();
+                      }
+                    },
+                    itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                      const PopupMenuItem<String>(
+                        value: 'edit',
+                        child: ListTile(
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Ubah Pesanan'),
+                        ),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'delete',
+                        child: ListTile(
+                          leading: Icon(Icons.delete_outline, color: Colors.red),
+                          title: Text('Hapus Pesanan', style: TextStyle(color: Colors.red)),
+                        ),
+                      ),
+                    ],
+                  ),
               ],
             ),
             const Divider(height: 20),
@@ -82,10 +111,13 @@ class OrderCard extends StatelessWidget {
                 ),
               ),
             const SizedBox(height: 16),
-            _buildStatusChip(order.status),
-            if (order.status == OrderStatus.pending || order.status == OrderStatus.inDelivery)
-              const SizedBox(height: 10),
-            _buildActionButtons(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildStatusChip(order.status),
+                _buildActionButtons(),
+              ],
+            ),
           ],
         ),
       ),
