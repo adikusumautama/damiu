@@ -75,20 +75,10 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
       _handleApiResponse('Pesanan tidak memiliki ID Firestore.', null);
       return;
     }
-    final updatedOrder = Order(
-      firestoreId: order.firestoreId,
-      customerName: order.customerName,
-      gallonQuantity: order.gallonQuantity,
-      otherItems: order.otherItems,
-      address: order.address,
-      phoneNumber: order.phoneNumber,
-      status: OrderStatus.delivered, // <-- Ubah status
-      createdAt: order.createdAt,
-      deliveredAt: DateTime.now(), // <-- Atur waktu selesai
-      employeeUid: order.employeeUid,
-    );
-    final error = await _firestoreService.updateOrder(order.firestoreId!, updatedOrder);
-    if (mounted) _handleApiResponse(error, 'Pesanan ditandai sebagai "Selesai".');
+    // --- PERBAIKAN: Gunakan transaksi lengkap untuk menyelesaikan pesanan ---
+    // Ini akan memperbarui status pesanan, stok, dan rekap penjualan harian.
+    final error = await _firestoreService.completeOrderTransaction(order);
+    if (mounted) _handleApiResponse(error, 'Pesanan berhasil diselesaikan dan rekap penjualan diperbarui.');
   }
 
   void _showDeleteConfirmDialog(Order order) {

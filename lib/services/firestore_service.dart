@@ -26,7 +26,10 @@ class FirestoreService {
       await batch.commit();
       return newOrderRef.id;
     } catch (e) {
-      return null;
+      // --- PERBAIKAN: Lemparkan kembali error agar bisa ditangkap oleh UI ---
+      // Ini akan membuat pesan error yang sebenarnya muncul di aplikasi, bukan pesan sukses palsu.
+      print('Error in addOrderAndUpsertCustomer: ${e.toString()}');
+      rethrow;
     }
   }
 

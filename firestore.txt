@@ -21,23 +21,19 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
-    // --- PERUBAHAN DI BLOK INI ---
     // Koleksi Log Galon Kembali (returned_gallons_log)
     match /returned_gallons_log/{logId} {
-      // Karyawan bisa membuat log baru DAN membaca log hari ini untuk statistik.
-      allow read, create: if request.auth != null &&
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan';
-      
-      // Admin juga bisa membaca semua log untuk laporan atau audit
-      allow read: if request.auth != null &&
-                     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow read, create: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan';
+      allow read: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
-    // --- AKHIR PERUBAHAN ---
 
     // Koleksi Penjualan Harian (daily_sales)
     match /daily_sales/{saleId} {
-      allow read, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-      allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan';
+      // --- PERBAIKAN: Berikan izin tulis (write) kepada Admin ---
+      // Karyawan dan Admin sekarang bisa membaca dan menulis data penjualan harian.
+      allow read, write: if request.auth != null && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan' || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      // Hanya Admin yang bisa menghapus rekap penjualan.
+      allow delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     // Koleksi Metadata Sinkronisasi Harian (daily_sync_metadata)
