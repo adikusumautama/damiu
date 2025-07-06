@@ -48,19 +48,6 @@ class FirestoreService {
     }
   }
 
-  Future<String?> updateOrderStatus(String firestoreId, String status, {bool setDeliveredTime = false}) async {
-    try {
-      Map<String, dynamic> dataToUpdate = {'status': status};
-      if (setDeliveredTime) {
-        dataToUpdate['deliveredAt'] = Timestamp.now();
-      }
-      await _db.collection('orders').doc(firestoreId).update(dataToUpdate);
-      return null;
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
   // --- FUNGSI CRUD PELANGGAN ---
   Future<String> addCustomer(Customer customer) async {
     final docRef = await _db.collection('customers').add(customer.toFirestore());
@@ -86,7 +73,7 @@ class FirestoreService {
       return 'Gagal menghapus rekap penjualan: ${e.toString()}';
     }
   }
-
+  
   Future<String?> deleteAllDailySales() async {
     try {
       final snapshot = await _db.collection('daily_sales').get();
@@ -136,6 +123,19 @@ class FirestoreService {
   }
 
   // --- OPERASI LAINNYA ---
+  Future<String?> updateOrderStatus(String firestoreId, String status, {bool setDeliveredTime = false}) async {
+    try {
+      Map<String, dynamic> dataToUpdate = {'status': status};
+      if (setDeliveredTime) {
+        dataToUpdate['deliveredAt'] = Timestamp.now();
+      }
+      await _db.collection('orders').doc(firestoreId).update(dataToUpdate);
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
   Future<String?> completeOrderTransaction(Order order) async {
     if (order.firestoreId == null) return "Order ID tidak ditemukan.";
     final orderRef = _db.collection('orders').doc(order.firestoreId!);
@@ -220,10 +220,39 @@ class FirestoreService {
     return _db.collection('daily_stock_levels').snapshots().map((snapshot) => snapshot.docs.map((doc) => DailyStock.fromMap(doc.data()!, doc.id)).toList());
   }
 
+  Stream<DailyStock?> getDailyStockStream(DateTime date) {
+    String docId = DateFormat('yyyy-MM-dd').format(date);
+    return _db.collection('daily_stock_levels').doc(docId).snapshots().map((snapshot) {
+      if (snapshot.exists && snapshot.data() != null) {
+        return DailyStock.fromMap(snapshot.data()!, snapshot.id);
+      }
+      return null;
+    });
+  }
+
+  Future<DailyStock?> getDailyStockOnce(DateTime date) async {
+    String docId = DateFormat('yyyy-MM-dd').format(date);
+    final doc = await _db.collection('daily_stock_levels').doc(docId).get();
+    if (doc.exists && doc.data() != null) {
+      return DailyStock.fromMap(doc.data()!, doc.id);
+    }
+    return null;
+  }
+
   Stream<List<Customer>> getCustomersStream() {
     return _db.collection('customers').snapshots().map((snapshot) => snapshot.docs.map((doc) => Customer.fromFirestore(doc.data(), doc.id)).toList());
   }
+  
+  Future<List<Customer>> getAllCustomersOnce() async {
+    final snapshot = await _db.collection('customers').get();
+    return snapshot.docs.map((doc) => Customer.fromFirestore(doc.data(), doc.id)).toList();
+  }
 
+  Future<List<Order>> getAllOrdersOnce() async {
+    final snapshot = await _db.collection('orders').get();
+    return snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList();
+  }
+  
   Stream<List<DailySale>> getDailySalesStream() {
     return _db.collection('daily_sales').orderBy('date', descending: true).snapshots().map((snapshot) => snapshot.docs.map((doc) => DailySale.fromMap(doc.data(), doc.id)).toList());
   }
@@ -235,15 +264,5 @@ class FirestoreService {
 
   Stream<List<DailySyncMetadataModel>> getDailySyncMetadataStream() {
     return _db.collection('daily_sync_metadata').orderBy('date', descending: true).snapshots().map((snapshot) => snapshot.docs.map((doc) => DailySyncMetadataModel.fromFirestore(doc)).toList());
-  }
-
-  Future<List<Customer>> getAllCustomersOnce() async {
-    final snapshot = await _db.collection('customers').get();
-    return snapshot.docs.map((doc) => Customer.fromFirestore(doc.data(), doc.id)).toList();
-  }
-
-  Future<List<Order>> getAllOrdersOnce() async {
-    final snapshot = await _db.collection('orders').get();
-    return snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList();
   }
 }

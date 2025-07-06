@@ -1,5 +1,4 @@
 // lib/main.dart
-
 import 'dart:async';
 import 'package:damiu/firebase_options.dart';
 import 'package:damiu/models/user_model.dart';
@@ -19,26 +18,10 @@ void main() {
   runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
     await initializeDateFormatting('id_ID', null);
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-
-    FlutterError.onError = (FlutterErrorDetails details) {
-      debugPrint('--- Flutter Error ---');
-      debugPrint(details.exceptionAsString());
-      if (details.stack != null) {
-        debugPrint(details.stack.toString());
-      }
-      debugPrint('---------------------');
-    };
-
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    FlutterError.onError = (details) => debugPrint('Flutter Error: ${details.exceptionAsString()}');
     runApp(const MainApp());
-  }, (error, stack) {
-    debugPrint('--- Uncaught Zoned Error ---');
-    debugPrint(error.toString());
-    debugPrint(stack.toString());
-    debugPrint('----------------------------');
-  });
+  }, (error, stack) => debugPrint('Zoned Error: $error'));
 }
 
 class MainApp extends StatelessWidget {
@@ -47,10 +30,7 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Aylaqua',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),
+      theme: ThemeData(primarySwatch: Colors.blue, visualDensity: VisualDensity.adaptivePlatformDensity),
       home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
     );
@@ -59,39 +39,23 @@ class MainApp extends StatelessWidget {
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
-
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: AuthService().authStateChanges,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
-
+        if (snapshot.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
         if (snapshot.hasData && snapshot.data != null) {
           return FutureBuilder<UserModel?>(
             future: AuthService().getUserModel(snapshot.data!.uid),
             builder: (context, userModelSnapshot) {
-              if (userModelSnapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                );
-              }
-              if (userModelSnapshot.hasError || !userModelSnapshot.hasData || userModelSnapshot.data == null) {
-                return const AuthToggle();
-              }
-
-              final userModel = userModelSnapshot.data!;
-              switch (userModel.role) {
-                case 'admin':
-                  return const AdminHomeScreen();
-                case 'karyawan':
-                  return const KaryawanHomeScreen();
-                case 'pelanggan':
-                  return const PelangganHomeScreen();
-                default:
-                  return const AuthToggle();
+              if (userModelSnapshot.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              if (userModelSnapshot.hasError || !userModelSnapshot.hasData || userModelSnapshot.data == null) return const AuthToggle();
+              switch (userModelSnapshot.data!.role) {
+                case 'admin': return const AdminHomeScreen();
+                case 'karyawan': return const KaryawanHomeScreen();
+                case 'pelanggan': return const PelangganHomeScreen();
+                default: return const AuthToggle();
               }
             },
           );
@@ -104,20 +68,13 @@ class AuthWrapper extends StatelessWidget {
 
 class AuthToggle extends StatefulWidget {
   const AuthToggle({super.key});
-
   @override
   State<AuthToggle> createState() => _AuthToggleState();
 }
 
 class _AuthToggleState extends State<AuthToggle> {
   bool showLoginPage = true;
-
-  void toggleScreens() {
-    setState(() {
-      showLoginPage = !showLoginPage;
-    });
-  }
-
+  void toggleScreens() => setState(() => showLoginPage = !showLoginPage);
   @override
   Widget build(BuildContext context) {
     if (showLoginPage) {
@@ -128,44 +85,15 @@ class _AuthToggleState extends State<AuthToggle> {
   }
 }
 
-// ======================================================================
-// FUNGSI FINAL DENGAN LOGIKA BISNIS YANG BENAR
-// ======================================================================
-/// Memeriksa dan mengatur stok awal untuk hari baru jika diperlukan.
-Future<void> resetDailyStockIfNeeded({
-  required bool isOnline,
-  required String? employeeUid,
-  required DateTime activeDate,
-}) async {
-  if (!isOnline || employeeUid == null) {
-    return;
-  }
-  
+Future<void> resetDailyStockIfNeeded({required bool isOnline, required String? employeeUid, required DateTime activeDate}) async {
+  if (!isOnline || employeeUid == null) return;
   final firestoreService = FirestoreService();
   final todayStock = await firestoreService.getDailyStockOnce(activeDate);
-
-  // Hanya jalankan jika dokumen stok untuk hari ini BELUM ADA
   if (todayStock == null) {
     final yesterday = activeDate.subtract(const Duration(days: 1));
     final yesterdayStock = await firestoreService.getDailyStockOnce(yesterday);
-    
-    // Stok Tersedia (Galon Isi): Diambil dari sisa stok kemarin, atau 0 jika tidak ada data.
     final lastDayFilledStock = yesterdayStock?.currentStock ?? 0;
-
-    // Set stok awal galon isi untuk hari ini
-    await firestoreService.setInitialStock(
-      date: activeDate,
-      filledStock: lastDayFilledStock,
-      updatedByUid: employeeUid,
-    );
-    
-    // Galon Kosong & Total Galon (Penjualan): Di-reset menjadi 0 setiap hari.
-    // Ini secara otomatis ditangani dengan membuat dokumen stok baru,
-    // kita hanya perlu memastikan nilai awalnya adalah 0.
-    await firestoreService.setInitialEmptyStock(
-      date: activeDate,
-      emptyStock: 0, // <-- PERBAIKAN FINAL: Selalu mulai dari 0 setiap hari baru.
-      updatedByUid: employeeUid,
-    );
+    await firestoreService.setInitialStock(date: activeDate, filledStock: lastDayFilledStock, updatedByUid: employeeUid);
+    await firestoreService.setInitialEmptyStock(date: activeDate, emptyStock: 0, updatedByUid: employeeUid);
   }
 }

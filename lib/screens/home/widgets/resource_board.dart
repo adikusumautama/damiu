@@ -1,258 +1,79 @@
+// lib/screens/home/widgets/resource_board.dart
 import 'package:flutter/material.dart';
 import 'package:damiu/services/firestore_service.dart';
-import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/models/daily_stock_model.dart';
+import 'package:damiu/screens/other/empty_gallon_input_screen.dart';
+import 'package:damiu/screens/other/daily_sales_input_screen.dart';
 
-class ResourceBoard extends StatefulWidget {
+class ResourceBoard extends StatelessWidget {
   final bool isOnline;
   final String? employeeUid;
-  final VoidCallback? onSetStock;
-  final DateTime? date;
-  const ResourceBoard({super.key, required this.isOnline, required this.employeeUid, this.onSetStock, this.date});
+  final VoidCallback onSetStock;
 
-  @override
-  State<ResourceBoard> createState() => _ResourceBoardState();
-}
-
-class _ResourceBoardState extends State<ResourceBoard> {
-  int? _stock;
-  int? _emptyStock;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadStock();
-  }
-
-  Future<void> _loadStock() async {
-    setState(() => _loading = true);
-    final stockDate = widget.date ?? DateTime.now();
-    if (widget.isOnline) {
-      final stream = FirestoreService().getDailyStockStream(stockDate);
-      stream.listen((stock) {
-        setState(() {
-          _stock = stock?.currentStock;
-          _emptyStock = stock?.initialEmptyStock;
-          _loading = false;
-        });
-      });
-    } else {
-      final db = DatabaseHelper();
-      final stock = await db.getDailyStock(stockDate);
-      setState(() {
-        _stock = stock?.currentStock;
-        _emptyStock = stock?.initialEmptyStock;
-        _loading = false;
-      });
-    }
-  }
+  const ResourceBoard({super.key, required this.isOnline, this.employeeUid, required this.onSetStock});
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.all(8.0),
+      elevation: 4,
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildResource('Galon Tersedia', _stock),
-                  _buildResource('Galon Kosong', _emptyStock),
-                  IconButton(
-                    icon: const Icon(Icons.edit, size: 20),
-                    tooltip: 'Set Persediaan',
-                    onPressed: widget.onSetStock ?? () {},
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.replay, size: 20),
-                    tooltip: 'Set Galon Kosong Kembali',
-                    onPressed: () async {
-                      final result = await showDialog<int>(
-                        context: context,
-                        builder: (ctx) => _SetEmptyStockDialog(),
-                      );
-                      if (result != null) {
-                        if (widget.isOnline) {
-                          await FirestoreService().setInitialEmptyStock(
-                            date: DateTime.now(),
-                            emptyStock: result,
-                            updatedByUid: widget.employeeUid ?? '-',
-                          );
-                          // Tambah stok isi juga
-                          final stock = await FirestoreService().getDailyStockStream(DateTime.now()).first;
-                          final newFilled = (stock?.currentStock ?? 0) + result;
-                          await FirestoreService().setInitialStock(
-                            date: DateTime.now(),
-                            filledStock: newFilled,
-                            updatedByUid: widget.employeeUid ?? '-',
-                          );
-                        } else {
-                          await DatabaseHelper().setInitialEmptyStock(
-                            date: DateTime.now(),
-                            emptyStock: result,
-                            updatedByUid: widget.employeeUid ?? '-',
-                          );
-                          // Tambah stok isi juga
-                          final stock = await DatabaseHelper().getDailyStock(DateTime.now());
-                          final newFilled = (stock?.initialStock ?? 0) + result;
-                          await DatabaseHelper().setInitialStock(
-                            date: DateTime.now(),
-                            filledStock: newFilled,
-                            updatedByUid: widget.employeeUid ?? '-',
-                          );
-                        }
-                        if (mounted) setState(() {});
-                      }
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline, size: 20, color: Colors.blue),
-                    tooltip: 'Tambah Galon Kosong',
-                    onPressed: () async {
-                      final result = await showDialog<int>(
-                        context: context,
-                        builder: (ctx) => _AddEmptyStockDialog(),
-                      );
-                      if (result != null && result > 0) {
-                        if (widget.isOnline) {
-                          // Tambah galon kosong dan galon tersedia
-                          final stock = await FirestoreService().getDailyStockStream(DateTime.now()).first;
-                          final newEmpty = (stock?.initialEmptyStock ?? 0) + result;
-                          final newFilled = (stock?.currentStock ?? 0) + result;
-                          await FirestoreService().setInitialEmptyStock(
-                            date: DateTime.now(),
-                            emptyStock: newEmpty,
-                            updatedByUid: widget.employeeUid ?? '-',
-                          );
-                          await FirestoreService().setInitialStock(
-                            date: DateTime.now(),
-                            filledStock: newFilled,
-                            updatedByUid: widget.employeeUid ?? '-',
-                          );
-                        } else {
-                          final stock = await DatabaseHelper().getDailyStock(DateTime.now());
-                          final newEmpty = (stock?.initialEmptyStock ?? 0) + result;
-                          final newFilled = (stock?.currentStock ?? 0) + result;
-                          await DatabaseHelper().setInitialEmptyStock(
-                            date: DateTime.now(),
-                            emptyStock: newEmpty,
-                            updatedByUid: widget.employeeUid ?? '-',
-                          );
-                          await DatabaseHelper().setInitialStock(
-                            date: DateTime.now(),
-                            filledStock: newFilled,
-                            updatedByUid: widget.employeeUid ?? '-',
-                          );
-                        }
-                        if (mounted) setState(() {});
-                      }
-                    },
-                  ),
-                ],
-              ),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildStockInfo(context, 'Galon Tersedia', Icons.local_drink, Colors.blue, (stock) => stock.currentStock),
+                _buildStockInfo(context, 'Galon Kosong', Icons.hourglass_empty, Colors.orange, (stock) => stock.initialEmptyStock),
+                _buildStockInfo(context, 'Total Terjual', Icons.point_of_sale, Colors.green, (stock) => stock.initialStock - stock.currentStock, isSale: true),
+              ],
+            ),
+            const Divider(height: 20, thickness: 1),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildActionButton(context, 'Set Stok Awal', Icons.add_business, onSetStock),
+                _buildActionButton(context, 'Input Galon Kosong', Icons.add_shopping_cart, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmptyGallonInputScreen()))),
+                _buildActionButton(context, 'Penjualan Langsung', Icons.bolt, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DailySalesInputScreen()))),
+              ],
+            )
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildResource(String label, int? value) {
+  Widget _buildStockInfo(BuildContext context, String title, IconData icon, Color color, int Function(DailyStock) getValue, {bool isSale = false}) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(value?.toString() ?? '-', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-        Text(label, style: const TextStyle(fontSize: 13)),
+        Icon(icon, size: 30, color: color),
+        const SizedBox(height: 8),
+        Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        const SizedBox(height: 4),
+        isOnline
+          ? StreamBuilder<DailyStock?>(
+              stream: FirestoreService().getDailyStockStream(DateTime.now()),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Text('0', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold));
+                final stock = snapshot.data;
+                return Text(stock == null ? '0' : getValue(stock).toString(), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold));
+              },
+            )
+          : Text("Offline", style: TextStyle(fontSize: 14, color: Colors.grey[600])),
       ],
     );
   }
-}
 
-class _SetEmptyStockDialog extends StatefulWidget {
-  const _SetEmptyStockDialog({Key? key}) : super(key: key);
-
-  @override
-  State<_SetEmptyStockDialog> createState() => _SetEmptyStockDialogState();
-}
-
-class _SetEmptyStockDialogState extends State<_SetEmptyStockDialog> {
-  final _emptyStockController = TextEditingController();
-  @override
-  void dispose() {
-    _emptyStockController.dispose();
-    super.dispose();
-  }
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Set Galon Kosong Kembali'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _emptyStockController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Jumlah Galon Kosong'),
-          ),
-        ],
+  Widget _buildActionButton(BuildContext context, String title, IconData icon, VoidCallback onPressed) {
+    return ElevatedButton.icon(
+      icon: Icon(icon, size: 16),
+      label: Text(title, style: const TextStyle(fontSize: 10)),
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Batal'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.pop(context, int.tryParse(_emptyStockController.text) ?? 0);
-          },
-          child: const Text('Simpan'),
-        ),
-      ],
-    );
-  }
-}
-
-// Tambahkan dialog baru untuk tambah galon kosong
-class _AddEmptyStockDialog extends StatefulWidget {
-  const _AddEmptyStockDialog({Key? key}) : super(key: key);
-
-  @override
-  State<_AddEmptyStockDialog> createState() => _AddEmptyStockDialogState();
-}
-
-class _AddEmptyStockDialogState extends State<_AddEmptyStockDialog> {
-  final _addEmptyStockController = TextEditingController();
-  @override
-  void dispose() {
-    _addEmptyStockController.dispose();
-    super.dispose();
-  }
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Tambah Galon Kosong'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _addEmptyStockController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Jumlah Galon Kosong'),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Batal'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.pop(context, int.tryParse(_addEmptyStockController.text) ?? 0);
-          },
-          child: const Text('Tambah'),
-        ),
-      ],
     );
   }
 }
