@@ -6,6 +6,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/models/user_model.dart';
 import 'package:damiu/services/auth_service.dart';
+import 'package:damiu/models/daily_stock_model.dart';
 import 'package:damiu/services/firestore_service.dart';
 import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/services/sync_service.dart';
@@ -27,6 +28,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   bool _isOnline = true;
   UserModel? _currentUser;
   List<Order> _localOrders = [];
+  DailyStock? _localStock;
   String _selectedStatus = 'Semua';
   bool _isSyncing = false;
   late StreamSubscription _connectivitySubscription;
@@ -40,11 +42,13 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     }
     return _localOrders.where((o) => o.status == _selectedStatus).toList();
   }
+  DailyStock? get localStock => _localStock;
   bool get isSyncing => _isSyncing;
 
   KaryawanHomeViewModel() { _init(); }
 
   void _init() async {
+    await _loadLocalStock();
     await _loadCurrentUser();
     await _loadLocalOrders();
     _initConnectivity();
@@ -67,6 +71,9 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     final currentlyOnline = results.isNotEmpty && results.first != ConnectivityResult.none;
     if (currentlyOnline == _isOnline && !isInitial) return;
     _isOnline = currentlyOnline;
+    if (!_isOnline) {
+      await _loadLocalStock();
+    }
     notifyListeners();
     if (currentlyOnline && !isInitial) await syncData();
   }
@@ -78,6 +85,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     try {
       await _syncService.syncAllData();
       await _loadLocalOrders();
+      await _loadLocalStock();
     } finally {
       if(hasListeners) { _isSyncing = false; notifyListeners(); }
     }
@@ -91,6 +99,11 @@ class KaryawanHomeViewModel extends ChangeNotifier {
 
   Future<void> _loadLocalOrders() async {
     _localOrders = await _dbHelper.getUnsyncedOrders();
+    if(hasListeners) notifyListeners();
+  }
+
+  Future<void> _loadLocalStock() async {
+    _localStock = await _dbHelper.getDailyStock(DateTime.now());
     if(hasListeners) notifyListeners();
   }
 
@@ -179,8 +192,14 @@ class KaryawanHomeScreen extends StatelessWidget {
     return [
       Column(children: [
         summaryWidget,
-        ResourceBoard(isOnline: viewModel.isOnline, employeeUid: viewModel.currentUser?.uid),
-        const SizedBox(height: 8),
+        if (viewModel.isOnline)
+          StreamBuilder<DailyStock?>(
+            stream: viewModel._firestoreService.getDailyStockStream(DateTime.now()),
+            builder: (context, snapshot) => ResourceBoard(stock: snapshot.data),
+          )
+        else
+          ResourceBoard(stock: viewModel.localStock),
+        _buildFilterChips(context, viewModel),
         Expanded(child: viewModel.isOnline ? OrdersStreamWidget(
           status: viewModel.selectedStatus,
           onStartDelivery: (o) async { final e = await viewModel.onStartDelivery(o); if (context.mounted) _handleApiError(context, e); },

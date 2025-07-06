@@ -204,6 +204,37 @@ class FirestoreService {
     }
   }
 
+  /// Menambah galon kosong yang kembali DAN langsung menambahkannya ke stok tersedia.
+  /// Ini juga menambah stok awal agar kalkulasi 'Total Terjual' tetap benar.
+  Future<String?> incrementEmptyStock({required int quantity, required String updatedByUid}) async {
+    final docId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final docRef = _db.collection('daily_stock_levels').doc(docId);
+    try {
+      await docRef.update({
+        // Tambah ke stok tersedia (karena langsung diisi ulang)
+        'current_stock': FieldValue.increment(quantity),
+        // Tambah ke stok awal (agar 'Total Terjual' tidak berkurang)
+        'initial_stock': FieldValue.increment(quantity),
+        'initial_empty_stock': FieldValue.increment(quantity),
+        'last_updated': FieldValue.serverTimestamp(),
+        'updated_by_uid': updatedByUid
+      });
+      return null;
+    } catch (e) {
+      if (e is FirebaseException && e.code == 'not-found') {
+        await docRef.set({
+          'initial_stock': quantity,
+          'current_stock': quantity,
+          'initial_empty_stock': quantity,
+          'last_updated': FieldValue.serverTimestamp(),
+          'updated_by_uid': updatedByUid
+        }, SetOptions(merge: true));
+        return null;
+      }
+      return e.toString();
+    }
+  }
+
   Future<String?> setInitialEmptyStock({required DateTime date, required int emptyStock, required String updatedByUid}) async {
     try {
       String docId = DateFormat('yyyy-MM-dd').format(date);

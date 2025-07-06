@@ -3,13 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:damiu/services/firestore_service.dart';
 import 'package:damiu/models/daily_stock_model.dart';
 import 'package:damiu/screens/other/empty_gallon_input_screen.dart';
-import 'package:damiu/screens/other/daily_sales_input_screen.dart';
 
 class ResourceBoard extends StatelessWidget {
-  final bool isOnline;
-  final String? employeeUid;
+  final DailyStock? stock;
 
-  const ResourceBoard({super.key, required this.isOnline, this.employeeUid});
+  const ResourceBoard({super.key, this.stock});
 
   @override
   Widget build(BuildContext context) {
@@ -23,9 +21,9 @@ class ResourceBoard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildStockInfo(context, 'Galon Tersedia', Icons.local_drink, Colors.blue, (stock) => stock.currentStock),
-                _buildStockInfo(context, 'Galon Kosong', Icons.hourglass_empty, Colors.orange, (stock) => stock.initialEmptyStock),
-                _buildStockInfo(context, 'Total Terjual', Icons.point_of_sale, Colors.green, (stock) => stock.initialStock - stock.currentStock, isSale: true),
+                _buildStockInfo('Galon Tersedia', Icons.local_drink, Colors.blue, (stock) => stock.currentStock),
+                _buildStockInfo('Galon Kosong', Icons.hourglass_empty, Colors.orange, (stock) => stock.initialEmptyStock),
+                _buildStockInfo('Total Terjual', Icons.point_of_sale, Colors.green, (stock) => stock.initialStock - stock.currentStock),
               ],
             ),
             const Divider(height: 20, thickness: 1),
@@ -41,23 +39,16 @@ class ResourceBoard extends StatelessWidget {
     );
   }
 
-  Widget _buildStockInfo(BuildContext context, String title, IconData icon, Color color, int Function(DailyStock) getValue, {bool isSale = false}) {
+  Widget _buildStockInfo(String title, IconData icon, Color color, int Function(DailyStock) getValue) {
     return Column(
       children: [
         Icon(icon, size: 30, color: color),
         const SizedBox(height: 8),
         Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         const SizedBox(height: 4),
-        isOnline
-          ? StreamBuilder<DailyStock?>(
-              stream: FirestoreService().getDailyStockStream(DateTime.now()),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Text('0', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold));
-                final stock = snapshot.data;
-                return Text(stock == null ? '0' : getValue(stock).toString(), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold));
-              },
-            )
-          : Text("Offline", style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+        Text(
+          stock == null ? '0' : getValue(stock!).toString(),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
       ],
     );
   }

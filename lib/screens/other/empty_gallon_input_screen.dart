@@ -23,40 +23,40 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
     super.dispose();
   }
 
-  Future<void> _saveRestock() async {
+  Future<void> _saveEmptyGallons() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     final employeeUid = _authService.getCurrentUser()?.uid;
     if (employeeUid == null) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Error: Pengguna tidak ditemukan.')),
         );
+      }
       setState(() => _isLoading = false);
       return;
     }
 
     final quantity = int.parse(_gallonQuantityController.text);
-    // --- PERBAIKAN: Panggil `adjustCurrentStock` yang sudah diperbaiki logikanya ---
-    // Fungsi ini sekarang menambah stok awal dan stok tersedia secara bersamaan.
-    final stockError = await _firestoreService.adjustCurrentStock(quantity);
+    final error = await _firestoreService.incrementEmptyStock(
+      quantity: quantity,
+      updatedByUid: employeeUid,
+    );
 
-    // CATATAN: Log ini secara semantik mencatat "galon kembali", bukan "restock".
-    // Pertimbangkan untuk membuat fungsi log baru khusus untuk restock jika diperlukan.
     await _firestoreService.addReturnedGallonLog(
       quantity: quantity,
       employeeUid: employeeUid,
     );
 
     if (mounted) {
-      if (stockError == null) {
+      if (error == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Berhasil menambah data stok!')),
+          const SnackBar(content: Text('Berhasil menambah data galon kosong!')),
         );
         Navigator.pop(context, true);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal memperbarui data: $stockError')),
+          SnackBar(content: Text('Gagal memperbarui data: $error')),
         );
       }
     }
@@ -66,7 +66,7 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Tambah Stok Galon Isi (Restock)')),
+      appBar: AppBar(title: const Text('Input Galon Kosong Kembali')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -75,7 +75,7 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Masukkan jumlah galon isi yang baru masuk untuk ditambahkan ke stok tersedia hari ini.',
+                'Masukkan jumlah galon kosong yang kembali dari pengantaran.',
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center,
               ),
@@ -84,9 +84,9 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
                 controller: _gallonQuantityController,
                 autofocus: true,
                 decoration: const InputDecoration(
-                  labelText: 'Jumlah Galon Isi',
+                  labelText: 'Jumlah Galon Kosong',
                   border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.inventory_2_outlined),
+                  prefixIcon: Icon(Icons.hourglass_empty_outlined),
                 ),
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -103,8 +103,8 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : ElevatedButton.icon(
                       icon: const Icon(Icons.save_outlined),
-                      label: const Text('Simpan & Tambah Stok'),
-                      onPressed: _saveRestock,
+                      label: const Text('Simpan Data'),
+                      onPressed: _saveEmptyGallons,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         textStyle: const TextStyle(fontSize: 16),

@@ -102,7 +102,11 @@ Future<void> resetDailyStockIfNeeded({required bool isOnline, required String? e
   if (todayStock == null) {
     final yesterday = activeDate.subtract(const Duration(days: 1));
     final yesterdayStock = await firestoreService.getDailyStockOnce(yesterday);
-    final lastDayFilledStock = yesterdayStock?.currentStock ?? 0;
+    
+    // Stok awal hari ini adalah sisa stok dari hari sebelumnya.
+    // Galon kosong dari hari sebelumnya sudah ditambahkan ke stok tersedia secara real-time.
+    final lastDayFilledStock = yesterdayStock?.currentStock ?? 0; 
+
     await firestoreService.setInitialStock(date: activeDate, filledStock: lastDayFilledStock, updatedByUid: employeeUid);
     await firestoreService.setInitialEmptyStock(date: activeDate, emptyStock: 0, updatedByUid: employeeUid);
   }
