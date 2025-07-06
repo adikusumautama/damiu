@@ -2,6 +2,7 @@
 
 import 'package:damiu/models/daily_stock_model.dart';
 import 'package:damiu/models/order_model.dart';
+import 'package:damiu/screens/admin/widgets/dashboard_summary_card.dart';
 import 'package:damiu/models/prediction_result_model.dart'; // <-- Tambahkan impor ini
 import 'package:damiu/screens/home/widgets/set_stock_dialog.dart';
 import 'package:damiu/services/auth_service.dart';
@@ -112,22 +113,60 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         final int emptyStock = stock?.initialEmptyStock ?? 0;
         final int soldStock = initialStock - currentStock;
 
+        // --- PERUBAHAN: Menggunakan list data untuk kartu ringkasan ---
+        final List<Map<String, dynamic>> summaryData = [
+          {'title': 'Total Pesanan Hari Ini', 'value': '$totalOrdersToday', 'icon': Icons.shopping_cart_outlined, 'color': Colors.blue},
+          {'title': 'Pesanan Selesai', 'value': '$deliveredOrdersCount', 'icon': Icons.check_circle_outline, 'color': Colors.green},
+          {'title': 'Menunggu Diantar', 'value': '$pendingOrdersCount', 'icon': Icons.pending_actions_outlined, 'color': Colors.orange},
+          {'title': 'Sedang Diantar', 'value': '$inDeliveryOrdersCount', 'icon': Icons.delivery_dining_outlined, 'color': Colors.purple},
+          {'title': 'Galon Tersedia', 'value': '$currentStock', 'icon': Icons.inventory, 'color': Colors.teal},
+          {'title': 'Total Terjual', 'value': '$soldStock', 'icon': Icons.point_of_sale, 'color': Colors.pink},
+        ];
+
         return RefreshIndicator(
           onRefresh: () async {
             _loadPrediction();
           },
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
+            // --- PERUBAHAN: Menggunakan GridView untuk tata letak yang lebih rapi ---
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildSummarySection(totalOrdersToday, deliveredOrdersCount),
-                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Ringkasan Hari Ini', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: const Icon(Icons.edit_note_outlined, color: Colors.blueAccent),
+                      onPressed: _showSetInitialStockDialog,
+                      tooltip: 'Ubah Stok Awal Hari Ini',
+                    )
+                  ],
+                ),
+                const SizedBox(height: 16),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 1.4,
+                  ),
+                  itemCount: summaryData.length,
+                  itemBuilder: (context, index) {
+                    final data = summaryData[index];
+                    return DashboardSummaryCard(
+                      title: data['title'],
+                      value: data['value'],
+                      icon: data['icon'],
+                      color: data['color'],
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
                 _buildPredictionCard(),
-                const SizedBox(height: 20),
-                _buildStockSection(currentStock, initialStock, emptyStock, soldStock),
-                const SizedBox(height: 20),
-                _buildOrderStatusSection(pendingOrdersCount, inDeliveryOrdersCount),
               ],
             ),
           ),
@@ -156,7 +195,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             } else {
               // Jika sukses, tampilkan data prediksi
               final predictionValue = snapshot.data!.predictionForNextDay?.predictedQuantity ?? 'N/A';
-              content = _buildInfoRow(Icons.online_prediction_outlined, 'Prediksi Penjualan Besok', '${predictionValue.toString()} Galon');
+              content = Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Row(
+                  children: [
+                    const Icon(Icons.online_prediction_outlined, color: Colors.indigo),
+                    const SizedBox(width: 15),
+                    const Text('Prediksi Penjualan Besok', style: TextStyle(fontSize: 16)),
+                    const Spacer(),
+                    Text('${predictionValue.toString()} Galon', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              );
             }
 
             return Column(
@@ -187,84 +237,4 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Widget _buildSummarySection(int totalOrders, int deliveredOrders) {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Ringkasan Hari Ini', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            _buildInfoRow(Icons.shopping_cart_outlined, 'Total Pesanan', '$totalOrders'),
-            _buildInfoRow(Icons.check_circle_outline, 'Pesanan Selesai', '$deliveredOrders'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStockSection(int currentStock, int initialStock, int emptyStock, int soldStock) {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Informasi Stok', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                IconButton(
-                  icon: const Icon(Icons.edit_note_outlined),
-                  onPressed: _showSetInitialStockDialog,
-                  tooltip: 'Ubah Stok Awal Hari Ini',
-                )
-              ],
-            ),
-            const Divider(height: 15, thickness: 1),
-            _buildInfoRow(Icons.inventory_2_outlined, 'Stok Awal', '$initialStock Galon'),
-            _buildInfoRow(Icons.inventory, 'Galon Tersedia', '$currentStock Galon'),
-            _buildInfoRow(Icons.hourglass_empty, 'Galon Kosong', '$emptyStock Galon'),
-            _buildInfoRow(Icons.point_of_sale, 'Total Terjual', '$soldStock Galon'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOrderStatusSection(int pendingOrders, int inDeliveryOrders) {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Status Pesanan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            _buildInfoRow(Icons.pending_actions_outlined, 'Menunggu Diantar', '$pendingOrders Pesanan'),
-            _buildInfoRow(Icons.delivery_dining_outlined, 'Sedang Diantar', '$inDeliveryOrders Pesanan'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        children: [
-          Icon(icon, color: Theme.of(context).primaryColor),
-          const SizedBox(width: 15),
-          Text(label, style: const TextStyle(fontSize: 16)),
-          const Spacer(),
-          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
 }
