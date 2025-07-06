@@ -12,6 +12,7 @@ import 'package:damiu/services/firestore_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 void main() {
@@ -31,6 +32,15 @@ class MainApp extends StatelessWidget {
     return MaterialApp(
       title: 'Aylaqua',
       theme: ThemeData(primarySwatch: Colors.blue, visualDensity: VisualDensity.adaptivePlatformDensity),
+      // --- TAMBAHKAN INI UNTUK MENGATASI ERROR ---
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('id', 'ID'), // Mengatur bahasa Indonesia sebagai bahasa yang didukung
+      ],
       home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
     );

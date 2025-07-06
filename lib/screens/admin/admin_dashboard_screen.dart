@@ -1,12 +1,14 @@
 // lib/screens/admin/admin_dashboard_screen.dart
 
-import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/models/daily_stock_model.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/models/prediction_result_model.dart'; // <-- Tambahkan impor ini
+import 'package:damiu/screens/home/widgets/set_stock_dialog.dart';
+import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/firestore_service.dart';
 import 'package:damiu/services/prediction_service.dart';
 import 'package:damiu/screens/admin/admin_prediction_view_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:rxdart/rxdart.dart';
@@ -21,6 +23,7 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final PredictionService _predictionService = PredictionService();
+  final AuthService _authService = AuthService();
   // --- PERBAIKAN: Menggunakan tipe data Future yang benar ---
   late Future<ApiPredictionResult> _predictionFuture;
 
@@ -37,13 +40,53 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
   }
 
+  Future<void> _showSetInitialStockDialog() async {
+    final User? currentUser = _authService.getCurrentUser();
+    if (currentUser == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal mendapatkan info admin.')),
+        );
+      }
+      return;
+    }
+
+    final result = await showDialog<Map<String, int>>(
+      context: context,
+      builder: (ctx) => const SetStockDialog(),
+    );
+
+    if (result != null && mounted) {
+      final stock = result['stock'] ?? 0;
+      final error = await _firestoreService.setInitialStock(
+        date: DateTime.now(),
+        filledStock: stock,
+        updatedByUid: currentUser.uid,
+      );
+
+      if (mounted) {
+        if (error == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Stok awal berhasil diperbarui!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal memperbarui stok: $error'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<dynamic>>(
       stream: CombineLatestStream.list([
         _firestoreService.getOrdersStream(),
         _firestoreService.getDailyStockStream(DateTime.now()),
-        _firestoreService.getDailySalesStream(),
       ]),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -58,7 +101,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
         final List<Order> orders = snapshot.data![0] as List<Order>;
         final DailyStock? stock = snapshot.data![1] as DailyStock?;
-        final List<DailySale> sales = snapshot.data![2] as List<DailySale>;
 
         final int totalOrders = orders.length;
         final int deliveredOrdersCount = orders.where((o) => o.status == OrderStatus.delivered).length;
@@ -67,8 +109,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
         final int currentStock = stock?.currentStock ?? 0;
         final int initialStock = stock?.initialStock ?? 0;
-
-        final double totalRevenue = sales.fold(0, (sum, sale) => sum + (sale.quantity * 7000));
 
         return RefreshIndicator(
           onRefresh: () async {
@@ -79,7 +119,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildSummarySection(totalOrders, deliveredOrdersCount, totalRevenue),
+                _buildSummarySection(totalOrders, deliveredOrdersCount),
                 const SizedBox(height: 20),
                 _buildPredictionCard(),
                 const SizedBox(height: 20),
@@ -145,7 +185,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Widget _buildSummarySection(int totalOrders, int deliveredOrders, double totalRevenue) {
+  Widget _buildSummarySection(int totalOrders, int deliveredOrders) {
     return Card(
       elevation: 4,
       child: Padding(
@@ -157,7 +197,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             const SizedBox(height: 10),
             _buildInfoRow(Icons.shopping_cart_outlined, 'Total Pesanan', '$totalOrders'),
             _buildInfoRow(Icons.check_circle_outline, 'Pesanan Selesai', '$deliveredOrders'),
-            _buildInfoRow(Icons.attach_money, 'Total Pendapatan', NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ').format(totalRevenue)),
           ],
         ),
       ),
@@ -172,8 +211,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Informasi Stok', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Informasi Stok', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                IconButton(
+                  icon: const Icon(Icons.edit_note_outlined),
+                  onPressed: _showSetInitialStockDialog,
+                  tooltip: 'Ubah Stok Awal Hari Ini',
+                )
+              ],
+            ),
+            const Divider(height: 15, thickness: 1),
             _buildInfoRow(Icons.inventory_2_outlined, 'Stok Awal', '$initialStock Galon'),
             _buildInfoRow(Icons.inventory, 'Sisa Stok', '$currentStock Galon'),
           ],

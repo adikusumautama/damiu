@@ -1,8 +1,11 @@
 // lib/screens/home/widgets/add_order_dialog.dart
 
+import 'package:damiu/models/customer_model.dart';
+import 'package:damiu/services/firestore_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:damiu/models/order_model.dart';
+import 'package:intl/intl.dart';
 
 class AddOrderDialog extends StatefulWidget {
   // --- PERBAIKAN: Memastikan definisi callback ini benar ---
@@ -35,6 +38,9 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
   late TextEditingController _phoneNumberController;
   DateTime _selectedDate = DateTime.now();
   bool _isEditMode = false;
+  final FirestoreService _firestoreService = FirestoreService();
+  List<Customer> _customers = [];
+  bool _isLoadingCustomers = true;
 
   @override
   void initState() {
@@ -47,8 +53,41 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
     _addressController = TextEditingController(text: widget.orderToEdit?.address ?? '');
     _phoneNumberController = TextEditingController(text: widget.orderToEdit?.phoneNumber ?? '');
     _selectedDate = widget.orderToEdit?.createdAt ?? DateTime.now();
+    _loadCustomers();
   }
 
+  Future<void> _loadCustomers() async {
+    try {
+      // Mengambil data pelanggan sekali saja saat dialog dibuka.
+      // Ini berfungsi untuk Admin (online) dan Karyawan (online).
+      // Untuk Karyawan offline, daftar ini akan kosong dan autocomplete tidak akan berfungsi.
+      final customers = await _firestoreService.getAllCustomersOnce();
+      if (mounted) {
+        setState(() {
+          _customers = customers;
+          _isLoadingCustomers = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingCustomers = false);
+      }
+      print("Gagal memuat data pelanggan untuk autocomplete: $e");
+    }
+  }
+
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2101),
+      locale: const Locale('id', 'ID'), // Menggunakan lokal Indonesia
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() => _selectedDate = picked);
+    }
+  }
   @override
   void dispose() {
     _customerNameController.dispose();
@@ -83,10 +122,57 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextFormField(
-                controller: _customerNameController,
-                decoration: const InputDecoration(labelText: 'Nama Pelanggan'),
-                validator: (value) => value == null || value.isEmpty ? 'Nama tidak boleh kosong' : null,
+              Autocomplete<Customer>(
+                initialValue: TextEditingValue(text: _customerNameController.text),
+                displayStringForOption: (Customer option) => option.name,
+                optionsBuilder: (TextEditingValue textEditingValue) {
+                  _customerNameController.text = textEditingValue.text;
+                  if (textEditingValue.text.isEmpty) {
+                    return const Iterable<Customer>.empty();
+                  }
+                  return _customers.where((Customer option) {
+                    return option.name
+                        .toLowerCase()
+                        .contains(textEditingValue.text.toLowerCase());
+                  });
+                },
+                onSelected: (Customer selection) {
+                  setState(() {
+                    _customerNameController.text = selection.name;
+                    _addressController.text = selection.address ?? '';
+                    _phoneNumberController.text = selection.phoneNumber ?? '';
+                  });
+                },
+                fieldViewBuilder: (BuildContext context,
+                    TextEditingController fieldTextEditingController,
+                    FocusNode fieldFocusNode,
+                    VoidCallback onFieldSubmitted) {
+                  if (_customerNameController.text != fieldTextEditingController.text) {
+                    fieldTextEditingController.text = _customerNameController.text;
+                  }
+                  return TextFormField(
+                    controller: fieldTextEditingController,
+                    focusNode: fieldFocusNode,
+                    decoration: InputDecoration(
+                      labelText: 'Nama Pelanggan',
+                      suffixIcon: _isLoadingCustomers
+                          ? const Padding(
+                              padding: EdgeInsets.all(12.0),
+                              child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2)),
+                            )
+                          : null,
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Nama tidak boleh kosong';
+                      }
+                      return null;
+                    },
+                  );
+                },
               ),
               TextFormField(
                 controller: _gallonQuantityController,
@@ -112,6 +198,25 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
               TextFormField(
                 controller: _otherItemsController,
                 decoration: const InputDecoration(labelText: 'Item Lain (Opsional)'),
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              Row(
+                children: [
+                  const Icon(Icons.calendar_today_outlined, color: Colors.grey, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      DateFormat('EEEE, dd MMMM yyyy', 'id_ID').format(_selectedDate),
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit_calendar_outlined, color: Colors.blue),
+                    onPressed: () => _selectDate(context),
+                    tooltip: 'Ubah Tanggal',
+                  ),
+                ],
               ),
             ],
           ),

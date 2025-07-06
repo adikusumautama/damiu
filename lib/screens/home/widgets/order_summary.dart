@@ -13,15 +13,6 @@ class OrderSummary extends StatelessWidget {
     final delivered = orders.where((o) => o.status == OrderStatus.delivered).length;
     final inDelivery = orders.where((o) => o.status == OrderStatus.inDelivery).length;
     final pending = orders.where((o) => o.status == OrderStatus.pending).length;
-    final activeDate = date ?? DateTime.now();
-    // Filter orders sesuai tanggal aktif untuk perhitungan Total Galon
-    final ordersForActiveDate = orders.where((o) =>
-      o.createdAt != null &&
-      o.createdAt!.year == activeDate.year &&
-      o.createdAt!.month == activeDate.month &&
-      o.createdAt!.day == activeDate.day
-    ).toList();
-    final totalGallon = ordersForActiveDate.fold<int>(0, (sum, o) => sum + (o.gallonQuantity ?? 0));
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Padding(
@@ -33,7 +24,6 @@ class OrderSummary extends StatelessWidget {
             _buildStat('Belum Diantar', pending, Icons.pending_actions),
             _buildStat('Sedang Antar', inDelivery, Icons.local_shipping),
             _buildStat('Terkirim', delivered, Icons.check_circle),
-            _buildStat('Total Galon', totalGallon, Icons.local_drink),
           ],
         ),
       ),

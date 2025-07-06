@@ -13,12 +13,10 @@ import 'package:flutter/material.dart';
 import 'package:damiu/screens/home/widgets/add_order_dialog.dart';
 import 'package:damiu/screens/home/widgets/order_summary.dart';
 import 'package:damiu/screens/home/widgets/orders_list.dart';
-import 'package:damiu/screens/home/widgets/set_stock_dialog.dart';
 import 'package:damiu/screens/home/widgets/resource_board.dart';
 import 'package:damiu/screens/home/widgets/profile_section.dart';
 import 'package:damiu/screens/home/widgets/customer_book.dart';
 import 'package:damiu/main.dart' show resetDailyStockIfNeeded;
-import 'package:damiu/screens/other/local_sales_management_screen.dart';
 
 class KaryawanHomeViewModel extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
@@ -112,19 +110,6 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     if(hasListeners) notifyListeners();
   }
 
-  Future<void> onSetInitialStock(BuildContext context) async {
-    final result = await showDialog<Map<String, int>>(context: context, builder: (ctx) => const SetStockDialog());
-    if (result != null && _currentUser != null) {
-      if (!context.mounted) return;
-      if (_isOnline) {
-        await _firestoreService.setInitialStock(date: DateTime.now(), filledStock: result['stock'] ?? 0, updatedByUid: _currentUser!.uid);
-      } else {
-        await _dbHelper.setInitialStock(date: DateTime.now(), filledStock: result['stock'] ?? 0, updatedByUid: _currentUser!.uid);
-      }
-      if(hasListeners) notifyListeners();
-    }
-  }
-  
   Future<void> completeLocalOrder(Order order) async {
       if(order.id == null) return;
       await _dbHelper.updateOrderStatus(order.id!, OrderStatus.delivered, setDeliveredTime: true);
@@ -166,7 +151,7 @@ class KaryawanHomeScreen extends StatelessWidget {
     return [
       Column(children: [
         summaryWidget,
-        ResourceBoard(isOnline: viewModel.isOnline, employeeUid: viewModel.currentUser?.uid, onSetStock: () => viewModel.onSetInitialStock(context)),
+        ResourceBoard(isOnline: viewModel.isOnline, employeeUid: viewModel.currentUser?.uid),
         const SizedBox(height: 8),
         Expanded(child: viewModel.isOnline ? OrdersStreamWidget(
           onStartDelivery: (o) async { final e = await viewModel.onStartDelivery(o); if (context.mounted) _handleApiError(context, e); },
@@ -182,10 +167,7 @@ class KaryawanHomeScreen extends StatelessWidget {
         )),
       ]),
       CustomerBook(isOnline: viewModel.isOnline),
-      ProfileSection(user: viewModel.currentUser, onLogout: () => showModalBottomSheet(context: context, builder: (ctx) => Wrap(children: [
-        ListTile(leading: const Icon(Icons.storage_outlined), title: const Text('Manajemen Data Lokal'), onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalSalesManagementScreen())); }),
-        ListTile(leading: const Icon(Icons.logout, color: Colors.red), title: const Text('Logout', style: TextStyle(color: Colors.red)), onTap: () => viewModel._authService.signOut()),
-      ]))),
+      ProfileSection(user: viewModel.currentUser, onLogout: () => viewModel._authService.signOut()),
     ];
   }
 

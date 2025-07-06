@@ -8,9 +8,8 @@ import 'package:damiu/screens/other/daily_sales_input_screen.dart';
 class ResourceBoard extends StatelessWidget {
   final bool isOnline;
   final String? employeeUid;
-  final VoidCallback onSetStock;
 
-  const ResourceBoard({super.key, required this.isOnline, this.employeeUid, required this.onSetStock});
+  const ResourceBoard({super.key, required this.isOnline, this.employeeUid});
 
   @override
   Widget build(BuildContext context) {
@@ -31,11 +30,9 @@ class ResourceBoard extends StatelessWidget {
             ),
             const Divider(height: 20, thickness: 1),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildActionButton(context, 'Set Stok Awal', Icons.add_business, onSetStock),
                 _buildActionButton(context, 'Input Galon Kosong', Icons.add_shopping_cart, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmptyGallonInputScreen()))),
-                _buildActionButton(context, 'Penjualan Langsung', Icons.bolt, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DailySalesInputScreen()))),
               ],
             )
           ],
