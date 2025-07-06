@@ -1,4 +1,5 @@
 // lib/screens/home/karyawan_home_screen.dart
+
 import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -189,7 +190,7 @@ class KaryawanHomeScreen extends StatelessWidget {
   }
 
   void _showAddOrderDialog(BuildContext context, KaryawanHomeViewModel viewModel, {Order? orderToEdit}) {
-    showDialog(context: context, builder: (ctx) => AddOrderDialog(orderToEdit: orderToEdit, onSubmit: ({customerName, gallonQuantity, otherItems, address, phoneNumber, date}) async {
+    showDialog(context: context, builder: (ctx) => AddOrderDialog(orderToEdit: orderToEdit, onSubmit: ({required customerName, required gallonQuantity, otherItems, address, phoneNumber, required date}) async {
       if (orderToEdit != null) {
         final updatedOrder = Order(firestoreId: orderToEdit.firestoreId, customerName: customerName, gallonQuantity: gallonQuantity, otherItems: otherItems, address: address, phoneNumber: phoneNumber, status: orderToEdit.status, createdAt: orderToEdit.createdAt, employeeUid: viewModel.currentUser?.uid);
         final e = await viewModel.onUpdateOrder(orderToEdit.firestoreId!, updatedOrder);

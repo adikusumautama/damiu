@@ -2,10 +2,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
-import 'package:damiu/models/order_model.dart'; // Pastikan impor ini ada
+import 'package:damiu/models/order_model.dart';
 
 class AddOrderDialog extends StatefulWidget {
+  // --- PERBAIKAN: Memastikan definisi callback ini benar ---
   final Function({
     required String customerName,
     required int gallonQuantity,
@@ -14,13 +14,12 @@ class AddOrderDialog extends StatefulWidget {
     String? phoneNumber,
     required DateTime date,
   }) onSubmit;
-  // --- PERBAIKAN: Tambahkan parameter ini ---
   final Order? orderToEdit;
 
   const AddOrderDialog({
     super.key,
     required this.onSubmit,
-    this.orderToEdit, // Jadikan opsional
+    this.orderToEdit,
   });
 
   @override
@@ -41,8 +40,7 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
   void initState() {
     super.initState();
     _isEditMode = widget.orderToEdit != null;
-
-    // --- PERBAIKAN: Isi form dengan data yang ada jika dalam mode edit ---
+    
     _customerNameController = TextEditingController(text: widget.orderToEdit?.customerName ?? '');
     _gallonQuantityController = TextEditingController(text: widget.orderToEdit?.gallonQuantity?.toString() ?? '');
     _otherItemsController = TextEditingController(text: widget.orderToEdit?.otherItems ?? '');
