@@ -23,7 +23,7 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
     super.dispose();
   }
 
-  Future<void> _saveReturnedGallons() async {
+  Future<void> _saveRestock() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     final employeeUid = _authService.getCurrentUser()?.uid;
@@ -37,7 +37,12 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
     }
 
     final quantity = int.parse(_gallonQuantityController.text);
+    // --- PERBAIKAN: Panggil `adjustCurrentStock` yang sudah diperbaiki logikanya ---
+    // Fungsi ini sekarang menambah stok awal dan stok tersedia secara bersamaan.
     final stockError = await _firestoreService.adjustCurrentStock(quantity);
+
+    // CATATAN: Log ini secara semantik mencatat "galon kembali", bukan "restock".
+    // Pertimbangkan untuk membuat fungsi log baru khusus untuk restock jika diperlukan.
     await _firestoreService.addReturnedGallonLog(
       quantity: quantity,
       employeeUid: employeeUid,
@@ -46,7 +51,7 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
     if (mounted) {
       if (stockError == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Berhasil memperbarui data stok!')),
+          const SnackBar(content: Text('Berhasil menambah data stok!')),
         );
         Navigator.pop(context, true);
       } else {
@@ -61,7 +66,7 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Input Galon Kosong Kembali')),
+      appBar: AppBar(title: const Text('Tambah Stok Galon Isi (Restock)')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -70,7 +75,7 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Catat jumlah galon kosong yang diterima/kembali dari pelanggan.',
+                'Masukkan jumlah galon isi yang baru masuk untuk ditambahkan ke stok tersedia hari ini.',
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center,
               ),
@@ -79,7 +84,7 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
                 controller: _gallonQuantityController,
                 autofocus: true,
                 decoration: const InputDecoration(
-                  labelText: 'Jumlah Galon Kosong',
+                  labelText: 'Jumlah Galon Isi',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.inventory_2_outlined),
                 ),
@@ -99,7 +104,7 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
                   : ElevatedButton.icon(
                       icon: const Icon(Icons.save_outlined),
                       label: const Text('Simpan & Tambah Stok'),
-                      onPressed: _saveReturnedGallons,
+                      onPressed: _saveRestock,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         textStyle: const TextStyle(fontSize: 16),

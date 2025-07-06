@@ -172,11 +172,22 @@ class FirestoreService {
     final docId = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final docRef = _db.collection('daily_stock_levels').doc(docId);
     try {
-      await docRef.update({'current_stock': FieldValue.increment(quantityChange), 'last_updated': FieldValue.serverTimestamp()});
+      // --- PERBAIKAN: Tambah juga `initial_stock` agar `Total Terjual` tidak berubah ---
+      await docRef.update({
+        'current_stock': FieldValue.increment(quantityChange),
+        'initial_stock': FieldValue.increment(quantityChange), // <-- TAMBAHKAN INI
+        'last_updated': FieldValue.serverTimestamp()
+      });
       return null;
     } catch (e) {
       if (e is FirebaseException && e.code == 'not-found') {
-        await docRef.set({'current_stock': quantityChange, 'initial_stock': 0, 'initial_empty_stock': 0, 'last_updated': FieldValue.serverTimestamp()});
+        // Jika dokumen belum ada, buat dengan nilai awal yang benar
+        await docRef.set({
+          'current_stock': quantityChange,
+          'initial_stock': quantityChange, // <-- TAMBAHKAN INI
+          'initial_empty_stock': 0,
+          'last_updated': FieldValue.serverTimestamp()
+        }, SetOptions(merge: true));
         return null;
       }
       return e.toString();
