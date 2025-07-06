@@ -183,7 +183,7 @@ class _AdminFirestoreDataWidgetState
                             DataColumn(label: Text('Tanggal')),
                             DataColumn(label: Text('Hari')),
                             DataColumn(label: Text('Total Galon')),
-                            DataColumn(label: Text('Jml. Antar')),
+                            // DataColumn(label: Text('Jml. Antar')),
                             DataColumn(label: Text('Aksi')),
                           ],
                           rows: salesData.map((sale) {
@@ -196,7 +196,7 @@ class _AdminFirestoreDataWidgetState
                                   Text(DateFormat('EEEE', 'id_ID').format(sale.date)),
                                 ),
                                 DataCell(Text(sale.quantity.toString())),
-                                DataCell(Text(sale.deliveryCount.toString())),
+                                // DataCell(Text(sale.deliveryCount.toString())),
                                 DataCell(
                                   IconButton(
                                     icon: const Icon(Icons.delete, color: Colors.red),

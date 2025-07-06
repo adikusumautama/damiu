@@ -164,19 +164,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 const SizedBox(height: 10),
                 content, // Tampilkan konten (loading, error, atau data)
                 const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    icon: const Text('Lihat Grafik Detail'),
-                    label: const Icon(Icons.arrow_forward_ios, size: 14),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const AdminPredictionViewScreen()),
-                      );
-                    },
-                  ),
-                ),
+                // Align(
+                //   alignment: Alignment.centerRight,
+                //   child: TextButton.icon(
+                //     icon: const Text('Lihat Grafik Detail'),
+                //     label: const Icon(Icons.arrow_forward_ios, size: 14),
+                //     onPressed: () {
+                //       Navigator.push(
+                //         context,
+                //         MaterialPageRoute(builder: (context) => const AdminPredictionViewScreen()),
+                //       );
+                //     },
+                //   ),
+                // ),
               ],
             );
           },

@@ -7,7 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// Mencegah kesalahan ketik dan membuat kode lebih mudah dibaca.
 class OrderStatus {
   static const String pending = 'Belum Diantar';
-  static const String inDelivery = 'Sedang Dalam Pengantaran';
+  static const String inDelivery = 'Sedang Diantar';
   static const String delivered = 'Sudah Diantar';
 }
 
