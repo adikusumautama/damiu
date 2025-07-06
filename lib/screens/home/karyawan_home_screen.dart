@@ -10,27 +10,26 @@ import 'package:damiu/services/firestore_service.dart';
 import 'package:damiu/services/database_helper.dart';
 import 'package:damiu/services/sync_service.dart';
 import 'package:flutter/material.dart';
-import 'widgets/add_order_dialog.dart';
-import 'widgets/order_summary.dart';
-import 'widgets/orders_list.dart';
-import 'widgets/set_stock_dialog.dart';
-import 'widgets/resource_board.dart';
-import 'widgets/profile_section.dart';
-import 'widgets/customer_book.dart';
-import '../../main.dart' show resetDailyStockIfNeeded;
-import '../other/local_sales_management_screen.dart';
+import 'package:damiu/screens/home/widgets/add_order_dialog.dart';
+import 'package:damiu/screens/home/widgets/order_summary.dart';
+// --- PERBAIKAN FINAL: Menggunakan path impor absolut yang pasti benar ---
+import 'package:damiu/screens/home/widgets/orders_list.dart'; 
+import 'package:damiu/screens/home/widgets/set_stock_dialog.dart';
+import 'package:damiu/screens/home/widgets/resource_board.dart';
+import 'package:damiu/screens/home/widgets/profile_section.dart';
+import 'package:damiu/screens/home/widgets/customer_book.dart';
+import 'package:damiu/main.dart' show resetDailyStockIfNeeded;
+import 'package:damiu/screens/other/local_sales_management_screen.dart';
 
 // ======================================================================
-// VIEWMODEL: BERISI SEMUA STATE DAN LOGIKA BISNIS
+// VIEWMODEL
 // ======================================================================
 class KaryawanHomeViewModel extends ChangeNotifier {
-  // Services
   final FirestoreService _firestoreService = FirestoreService();
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final SyncService _syncService = SyncService();
   final AuthService _authService = AuthService();
 
-  // State
   int _selectedIndex = 0;
   bool _isOnline = true;
   UserModel? _currentUser;
@@ -38,14 +37,12 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   bool _isSyncing = false;
   late StreamSubscription _connectivitySubscription;
 
-  // Getters untuk diakses oleh UI
   int get selectedIndex => _selectedIndex;
   bool get isOnline => _isOnline;
   UserModel? get currentUser => _currentUser;
   List<Order> get localOrders => _localOrders;
   bool get isSyncing => _isSyncing;
 
-  // Inisialisasi
   KaryawanHomeViewModel() {
     _init();
   }
@@ -59,7 +56,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       employeeUid: _currentUser?.uid,
       activeDate: DateTime.now(),
     );
-    notifyListeners();
+    if(hasListeners) notifyListeners();
   }
 
   @override
@@ -68,7 +65,6 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     super.dispose();
   }
 
-  // --- LOGIKA KONEKTIVITAS DAN SINKRONISASI ---
   void _initConnectivity() {
     Connectivity().checkConnectivity().then((results) {
       _updateConnectionStatus(results, isInitial: true);
@@ -98,23 +94,24 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       await _syncService.syncAllData();
       await _loadLocalOrders();
     } finally {
-      _isSyncing = false;
-      notifyListeners();
+      if(hasListeners) {
+        _isSyncing = false;
+        notifyListeners();
+      }
     }
   }
 
-  // --- LOGIKA DATA ---
   Future<void> _loadCurrentUser() async {
     final user = _authService.getCurrentUser();
     if (user != null) {
       _currentUser = await _authService.getUserModel(user.uid);
     }
-    notifyListeners();
+    if(hasListeners) notifyListeners();
   }
 
   Future<void> _loadLocalOrders() async {
     _localOrders = await _dbHelper.getUnsyncedOrders();
-    notifyListeners();
+    if(hasListeners) notifyListeners();
   }
 
   void onItemTapped(int index) {
@@ -122,7 +119,6 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- LOGIKA AKSI (Callbacks untuk UI) ---
   Future<String?> onStartDelivery(Order order) async {
     if(order.firestoreId == null) return "Order ID tidak valid.";
     return await _firestoreService.updateOrderStatus(order.firestoreId!, OrderStatus.inDelivery);
@@ -131,7 +127,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   Future<String?> onCompleteDelivery(Order order) async {
     return await _firestoreService.completeOrderTransaction(order);
   }
-
+  
   Future<void> onAddOrder({
     required String customerName,
     required int gallonQuantity,
@@ -162,7 +158,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       await _dbHelper.insertOrder(newOrder);
       await _loadLocalOrders();
     }
-    notifyListeners();
+    if(hasListeners) notifyListeners();
   }
 
   Future<void> onSetInitialStock(BuildContext context) async {
@@ -185,7 +181,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
           updatedByUid: _currentUser!.uid,
         );
       }
-      notifyListeners();
+      if(hasListeners) notifyListeners();
     }
   }
   
@@ -197,7 +193,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
 }
 
 // ======================================================================
-// WIDGET (UI): BERSIH DAN HANYA FOKUS PADA TAMPILAN
+// WIDGET (UI)
 // ======================================================================
 class KaryawanHomeScreen extends StatelessWidget {
   const KaryawanHomeScreen({super.key});
@@ -279,8 +275,14 @@ class KaryawanHomeScreen extends StatelessWidget {
           Expanded(
             child: viewModel.isOnline
                 ? OrdersStreamWidget(
-                    onStartDelivery: (order) async => _handleApiError(context, await viewModel.onStartDelivery(order)),
-                    onCompleteDelivery: (order) async => _handleApiError(context, await viewModel.onCompleteDelivery(order)),
+                    onStartDelivery: (order) async {
+                      final error = await viewModel.onStartDelivery(order);
+                      if (context.mounted) _handleApiError(context, error);
+                    },
+                    onCompleteDelivery: (order) async {
+                      final error = await viewModel.onCompleteDelivery(order);
+                      if (context.mounted) _handleApiError(context, error);
+                    },
                   )
                 : OrdersLocalWidget(
                     orders: viewModel.localOrders,
@@ -349,7 +351,7 @@ class KaryawanHomeScreen extends StatelessWidget {
   }
 
   void _handleApiError(BuildContext context, String? error) {
-    if (error != null && context.mounted) {
+    if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $error'), backgroundColor: Colors.red),
       );
