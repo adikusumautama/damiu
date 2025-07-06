@@ -27,12 +27,19 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   bool _isOnline = true;
   UserModel? _currentUser;
   List<Order> _localOrders = [];
+  String _selectedStatus = 'Semua';
   bool _isSyncing = false;
   late StreamSubscription _connectivitySubscription;
   int get selectedIndex => _selectedIndex;
   bool get isOnline => _isOnline;
   UserModel? get currentUser => _currentUser;
-  List<Order> get localOrders => _localOrders;
+  String get selectedStatus => _selectedStatus;
+  List<Order> get localOrders {
+    if (_selectedStatus == 'Semua') {
+      return _localOrders;
+    }
+    return _localOrders.where((o) => o.status == _selectedStatus).toList();
+  }
   bool get isSyncing => _isSyncing;
 
   KaryawanHomeViewModel() { _init(); }
@@ -89,6 +96,11 @@ class KaryawanHomeViewModel extends ChangeNotifier {
 
   void onItemTapped(int index) {
     _selectedIndex = index;
+    notifyListeners();
+  }
+
+  void onFilterChanged(String newStatus) {
+    _selectedStatus = newStatus;
     notifyListeners();
   }
 
@@ -170,12 +182,13 @@ class KaryawanHomeScreen extends StatelessWidget {
         ResourceBoard(isOnline: viewModel.isOnline, employeeUid: viewModel.currentUser?.uid),
         const SizedBox(height: 8),
         Expanded(child: viewModel.isOnline ? OrdersStreamWidget(
+          status: viewModel.selectedStatus,
           onStartDelivery: (o) async { final e = await viewModel.onStartDelivery(o); if (context.mounted) _handleApiError(context, e); },
           onCompleteDelivery: (o) async { final e = await viewModel.onCompleteDelivery(o); if (context.mounted) _handleApiError(context, e); },
           onEdit: (o) => _showAddOrderDialog(context, viewModel, orderToEdit: o),
           onDelete: (o) => _showDeleteConfirmDialog(context, viewModel, o),
         ) : OrdersLocalWidget(
-          orders: viewModel.localOrders,
+          orders: viewModel.localOrders, // Getter ini sudah memfilter data
           onStartDelivery: (o) async { if (o.id != null) { await viewModel._dbHelper.updateOrderStatus(o.id!, OrderStatus.inDelivery); await viewModel._loadLocalOrders(); } },
           onCompleteDelivery: (o) async { if (o.id != null) await viewModel.completeLocalOrder(o); },
           onEdit: (o) {},
@@ -188,6 +201,30 @@ class KaryawanHomeScreen extends StatelessWidget {
         ListTile(leading: const Icon(Icons.logout, color: Colors.red), title: const Text('Logout', style: TextStyle(color: Colors.red)), onTap: () => viewModel._authService.signOut()),
       ]))),
     ];
+  }
+
+  Widget _buildFilterChips(BuildContext context, KaryawanHomeViewModel viewModel) {
+    final statuses = ['Semua', OrderStatus.pending, OrderStatus.inDelivery, OrderStatus.delivered];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+      child: Wrap(
+        spacing: 8.0,
+        runSpacing: 4.0,
+        alignment: WrapAlignment.center,
+        children: statuses.map((status) {
+          return FilterChip(
+            label: Text(status),
+            selected: viewModel.selectedStatus == status,
+            onSelected: (bool selected) {
+              if (selected) {
+                viewModel.onFilterChanged(status);
+              }
+            },
+            selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
+          );
+        }).toList(),
+      ),
+    );
   }
 
   void _showAddOrderDialog(BuildContext context, KaryawanHomeViewModel viewModel, {Order? orderToEdit}) {

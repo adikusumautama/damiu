@@ -10,20 +10,22 @@ class OrdersStreamWidget extends StatelessWidget {
     super.key,
     required this.onStartDelivery,
     required this.onCompleteDelivery,
-    required this.onEdit, // Tambahkan ini
-    required this.onDelete, // Tambahkan ini
+    required this.onEdit,
+    required this.onDelete,
+    this.status,
   });
 
   final Function(Order) onStartDelivery;
   final Function(Order) onCompleteDelivery;
   final Function(Order) onEdit;
   final Function(Order) onDelete;
+  final String? status;
 
   @override
   Widget build(BuildContext context) {
     final FirestoreService firestoreService = FirestoreService();
     return StreamBuilder<List<Order>>(
-      stream: firestoreService.getOrdersStream(), // PERUBAHAN: Mengambil semua pesanan, bukan hanya hari ini
+      stream: firestoreService.getOrdersStream(status: status),
       builder: (context, snapshot) {
         if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());

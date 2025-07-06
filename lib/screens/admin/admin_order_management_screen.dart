@@ -15,6 +15,7 @@ class AdminOrderManagementScreen extends StatefulWidget {
 
 class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen> {
   final FirestoreService _firestoreService = FirestoreService();
+  String _selectedStatus = 'Semua';
 
   void _showEditOrderDialog(Order orderToEdit) {
     showDialog(
@@ -132,36 +133,70 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: StreamBuilder<List<Order>>(
-        stream: _firestoreService.getOrdersStream(), // Mengambil semua pesanan
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('Tidak ada data pesanan di Firestore.'));
-          }
+      body: Column(
+        children: [
+          _buildFilterChips(),
+          Expanded(
+            child: StreamBuilder<List<Order>>(
+              stream: _firestoreService.getOrdersStream(status: _selectedStatus),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return Center(
+                      child: Text(
+                          'Tidak ada pesanan dengan status "${_selectedStatus == 'Selesai' ? OrderStatus.delivered : _selectedStatus}".'));
+                }
 
-          final orders = snapshot.data!;
+                final orders = snapshot.data!;
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(8.0),
-            itemCount: orders.length,
-            itemBuilder: (context, index) {
-              final order = orders[index];
-              return OrderCard(
-                order: order,
-                onEdit: () => _showEditOrderDialog(order),
-                onDelete: () => _showDeleteConfirmDialog(order),
-                onStartDelivery: () => _onStartDelivery(order),
-                onCompleteDelivery: () => _onCompleteDelivery(order),
-              );
+                return ListView.builder(
+                  padding: const EdgeInsets.all(8.0),
+                  itemCount: orders.length,
+                  itemBuilder: (context, index) {
+                    final order = orders[index];
+                    return OrderCard(
+                      order: order,
+                      onEdit: () => _showEditOrderDialog(order),
+                      onDelete: () => _showDeleteConfirmDialog(order),
+                      onStartDelivery: () => _onStartDelivery(order),
+                      onCompleteDelivery: () => _onCompleteDelivery(order),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChips() {
+    final statuses = ['Semua', OrderStatus.pending, OrderStatus.inDelivery, OrderStatus.delivered];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+      child: Wrap(
+        spacing: 8.0,
+        runSpacing: 4.0,
+        children: statuses.map((status) {
+          return FilterChip(
+            label: Text(status),
+            selected: _selectedStatus == status,
+            onSelected: (bool selected) {
+              if (selected) {
+                setState(() {
+                  _selectedStatus = status;
+                });
+              }
             },
+            selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
           );
-        },
+        }).toList(),
       ),
     );
   }

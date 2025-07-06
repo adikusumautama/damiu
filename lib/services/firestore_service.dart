@@ -220,25 +220,31 @@ class FirestoreService {
     final startOfDay = DateTime(now.year, now.month, now.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
     return _db.collection('orders').where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay)).where('createdAt', isLessThan: Timestamp.fromDate(endOfDay)).orderBy('createdAt', descending: false).snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList());
+        .map((snapshot) => snapshot.docs.map((doc) => Order.fromFirestore(doc.data() as Map<String, dynamic>, doc.id)).toList());
   }
 
-  Stream<List<Order>> getOrdersStream() {
-    return _db.collection('orders')
-        .orderBy('createdAt', descending: true) // Mengurutkan dari yang terbaru
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList());
+  Stream<List<Order>> getOrdersStream({String? status}) {
+    Query query = _db.collection('orders');
+
+    if (status != null && status != 'Semua') {
+      query = query.where('status', isEqualTo: status);
+    }
+
+    query = query.orderBy('createdAt', descending: true);
+
+    return query.snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => Order.fromFirestore(doc.data() as Map<String, dynamic>, doc.id)).toList());
   }
 
   Stream<List<DailyStock>> getStocksStream() {
-    return _db.collection('daily_stock_levels').snapshots().map((snapshot) => snapshot.docs.map((doc) => DailyStock.fromMap(doc.data()!, doc.id)).toList());
+    return _db.collection('daily_stock_levels').snapshots().map((snapshot) => snapshot.docs.map((doc) => DailyStock.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList());
   }
 
   Stream<DailyStock?> getDailyStockStream(DateTime date) {
     String docId = DateFormat('yyyy-MM-dd').format(date);
     return _db.collection('daily_stock_levels').doc(docId).snapshots().map((snapshot) {
       if (snapshot.exists && snapshot.data() != null) {
-        return DailyStock.fromMap(snapshot.data()!, snapshot.id);
+        return DailyStock.fromMap(snapshot.data() as Map<String, dynamic>, snapshot.id);
       }
       return null;
     });
@@ -248,32 +254,32 @@ class FirestoreService {
     String docId = DateFormat('yyyy-MM-dd').format(date);
     final doc = await _db.collection('daily_stock_levels').doc(docId).get();
     if (doc.exists && doc.data() != null) {
-      return DailyStock.fromMap(doc.data()!, doc.id);
+      return DailyStock.fromMap(doc.data() as Map<String, dynamic>, doc.id);
     }
     return null;
   }
 
   Stream<List<Customer>> getCustomersStream() {
-    return _db.collection('customers').snapshots().map((snapshot) => snapshot.docs.map((doc) => Customer.fromFirestore(doc.data(), doc.id)).toList());
+    return _db.collection('customers').snapshots().map((snapshot) => snapshot.docs.map((doc) => Customer.fromFirestore(doc.data() as Map<String, dynamic>, doc.id)).toList());
   }
   
   Future<List<Customer>> getAllCustomersOnce() async {
     final snapshot = await _db.collection('customers').get();
-    return snapshot.docs.map((doc) => Customer.fromFirestore(doc.data(), doc.id)).toList();
+    return snapshot.docs.map((doc) => Customer.fromFirestore(doc.data() as Map<String, dynamic>, doc.id)).toList();
   }
 
   Future<List<Order>> getAllOrdersOnce() async {
     final snapshot = await _db.collection('orders').get();
-    return snapshot.docs.map((doc) => Order.fromFirestore(doc.data(), doc.id)).toList();
+    return snapshot.docs.map((doc) => Order.fromFirestore(doc.data() as Map<String, dynamic>, doc.id)).toList();
   }
   
   Stream<List<DailySale>> getDailySalesStream() {
-    return _db.collection('daily_sales').orderBy('date', descending: true).snapshots().map((snapshot) => snapshot.docs.map((doc) => DailySale.fromMap(doc.data(), doc.id)).toList());
+    return _db.collection('daily_sales').orderBy('date', descending: true).snapshots().map((snapshot) => snapshot.docs.map((doc) => DailySale.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList());
   }
   
   Future<List<DailySale>> getDailySalesOnce() async {
     final snapshot = await _db.collection('daily_sales').orderBy('date', descending: false).get();
-    return snapshot.docs.map((doc) => DailySale.fromMap(doc.data(), doc.id)).toList();
+    return snapshot.docs.map((doc) => DailySale.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
   }
 
   Stream<List<DailySyncMetadataModel>> getDailySyncMetadataStream() {
