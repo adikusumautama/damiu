@@ -1,6 +1,6 @@
 // lib/main.dart
 
-import 'dart:async'; // <-- Tambahkan impor ini
+import 'dart:async';
 import 'package:damiu/firebase_options.dart';
 import 'package:damiu/models/user_model.dart';
 import 'package:damiu/screens/auth/login_screen.dart';
@@ -15,9 +15,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
-// ======================================================================
-// PERBAIKAN FINAL: Menggunakan runZonedGuarded untuk menangkap silent crash
-// ======================================================================
 void main() {
   runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
@@ -26,7 +23,6 @@ void main() {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Menangkap error spesifik dari framework Flutter
     FlutterError.onError = (FlutterErrorDetails details) {
       debugPrint('--- Flutter Error ---');
       debugPrint(details.exceptionAsString());
@@ -38,7 +34,6 @@ void main() {
 
     runApp(const MainApp());
   }, (error, stack) {
-    // Menangkap SEMUA error lain yang tidak tertangani (penyebab silent crash)
     debugPrint('--- Uncaught Zoned Error ---');
     debugPrint(error.toString());
     debugPrint(stack.toString());
@@ -70,12 +65,10 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: AuthService().authStateChanges,
       builder: (context, snapshot) {
-        // Menunggu koneksi stream
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        // Pengguna sudah login
         if (snapshot.hasData && snapshot.data != null) {
           return FutureBuilder<UserModel?>(
             future: AuthService().getUserModel(snapshot.data!.uid),
@@ -86,8 +79,6 @@ class AuthWrapper extends StatelessWidget {
                 );
               }
               if (userModelSnapshot.hasError || !userModelSnapshot.hasData || userModelSnapshot.data == null) {
-                // Jika terjadi error atau data pengguna tidak ditemukan, arahkan kembali ke halaman login
-                // Ini juga mencegah crash jika dokumen user dihapus dari Firestore
                 return const AuthToggle();
               }
 
@@ -105,8 +96,6 @@ class AuthWrapper extends StatelessWidget {
             },
           );
         }
-
-        // Pengguna belum login
         return const AuthToggle();
       },
     );
@@ -139,9 +128,10 @@ class _AuthToggleState extends State<AuthToggle> {
   }
 }
 
-// Fungsi ini sekarang lebih baik dipanggil dari dalam ViewModel setelah login,
-// bukan dari main.dart, agar lebih aman.
-// Saya membiarkannya di sini jika Anda membutuhkannya di tempat lain.
+// ======================================================================
+// FUNGSI FINAL DENGAN LOGIKA BISNIS YANG BENAR
+// ======================================================================
+/// Memeriksa dan mengatur stok awal untuk hari baru jika diperlukan.
 Future<void> resetDailyStockIfNeeded({
   required bool isOnline,
   required String? employeeUid,
@@ -154,23 +144,27 @@ Future<void> resetDailyStockIfNeeded({
   final firestoreService = FirestoreService();
   final todayStock = await firestoreService.getDailyStockOnce(activeDate);
 
-  // Hanya reset jika dokumen stok untuk hari ini belum ada
+  // Hanya jalankan jika dokumen stok untuk hari ini BELUM ADA
   if (todayStock == null) {
     final yesterday = activeDate.subtract(const Duration(days: 1));
     final yesterdayStock = await firestoreService.getDailyStockOnce(yesterday);
     
-    // Stok awal hari ini adalah sisa stok dari hari kemarin
-    final initialStockToday = yesterdayStock?.currentStock ?? 0;
+    // Stok Tersedia (Galon Isi): Diambil dari sisa stok kemarin, atau 0 jika tidak ada data.
+    final lastDayFilledStock = yesterdayStock?.currentStock ?? 0;
 
+    // Set stok awal galon isi untuk hari ini
     await firestoreService.setInitialStock(
       date: activeDate,
-      filledStock: initialStockToday,
+      filledStock: lastDayFilledStock,
       updatedByUid: employeeUid,
     );
-    // Set stok galon kosong ke 0
+    
+    // Galon Kosong & Total Galon (Penjualan): Di-reset menjadi 0 setiap hari.
+    // Ini secara otomatis ditangani dengan membuat dokumen stok baru,
+    // kita hanya perlu memastikan nilai awalnya adalah 0.
     await firestoreService.setInitialEmptyStock(
       date: activeDate,
-      emptyStock: 0,
+      emptyStock: 0, // <-- PERBAIKAN FINAL: Selalu mulai dari 0 setiap hari baru.
       updatedByUid: employeeUid,
     );
   }
