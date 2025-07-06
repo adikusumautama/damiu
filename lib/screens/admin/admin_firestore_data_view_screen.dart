@@ -1,4 +1,5 @@
 // lib/screens/admin/admin_firestore_data_view_screen.dart
+
 import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/services/firestore_service.dart';
 import 'package:flutter/material.dart';
@@ -24,7 +25,7 @@ class _AdminFirestoreDataWidgetState
             return AlertDialog(
               title: const Text('Konfirmasi Hapus Data'),
               content: Text(
-                'Anda yakin ingin menghapus data penjualan tanggal ${DateFormat('dd-MM-yyyy').format(date)} dari Firestore?',
+                'Anda yakin ingin menghapus data rekap penjualan tanggal ${DateFormat('dd-MM-yyyy').format(date)}? Menghapus ini dapat memengaruhi keakuratan prediksi.',
               ),
               actions: <Widget>[
                 TextButton(
@@ -42,19 +43,22 @@ class _AdminFirestoreDataWidgetState
         ) ??
         false;
 
-    if (confirm) {
+    if (confirm && mounted) {
+      // --- PEMANGGILAN FUNGSI YANG BENAR ---
       String? error = await _firestoreService.deleteDailySale(firestoreId);
       if (mounted) {
         if (error == null) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Data berhasil dihapus dari Firestore.'),
+              content: Text('Data rekap berhasil dihapus.'),
+              backgroundColor: Colors.green,
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Gagal menghapus data dari Firestore: $error'),
+              content: Text('Gagal menghapus data: $error'),
+              backgroundColor: Colors.red,
             ),
           );
         }
@@ -70,7 +74,7 @@ class _AdminFirestoreDataWidgetState
             return AlertDialog(
               title: const Text('Konfirmasi Hapus Semua Data'),
               content: const Text(
-                'Anda yakin ingin menghapus SEMUA data penjualan dari Firestore? Tindakan ini tidak dapat dibatalkan.',
+                'Anda yakin ingin menghapus SEMUA data rekap penjualan dari Firestore? Tindakan ini tidak dapat dibatalkan.',
               ),
               actions: <Widget>[
                 TextButton(
@@ -88,20 +92,20 @@ class _AdminFirestoreDataWidgetState
         ) ??
         false;
 
-    if (confirm) {
+    if (confirm && mounted) {
       String? error = await _firestoreService.deleteAllDailySales();
       if (mounted) {
         if (error == null) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Semua data berhasil dihapus dari Firestore.'),
+              content: Text('Semua data rekap berhasil dihapus.'),
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Gagal menghapus semua data dari Firestore: $error',
+                'Gagal menghapus semua data: $error',
               ),
             ),
           );
@@ -125,13 +129,12 @@ class _AdminFirestoreDataWidgetState
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(
-              child: Text('Tidak ada data penjualan di Firestore.'),
+              child: Text('Tidak ada data rekap penjualan di Firestore.'),
             );
           }
 
           final salesData = snapshot.data!;
 
-          // Menggunakan Padding di sini untuk keseluruhan konten di bawah AppBar
           return Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -141,7 +144,7 @@ class _AdminFirestoreDataWidgetState
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Total Data: ${salesData.length} entri',
+                      'Total Data: ${salesData.length} entri harian',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
@@ -153,28 +156,24 @@ class _AdminFirestoreDataWidgetState
                         color: Colors.red,
                       ),
                       onPressed: salesData.isEmpty ? null : _deleteAllSales,
-                      tooltip: 'Hapus Semua Data dari Firestore',
+                      tooltip: 'Hapus Semua Rekap dari Firestore',
                     ),
                   ],
                 ),
                 const SizedBox(height: 10),
-                // Expanded akan membuat Card (dan DataTable di dalamnya) mengambil sisa ruang vertikal
                 Expanded(
                   child: SizedBox(
                     width: double.infinity,
                     child: Card(
                       elevation: 2,
-                      // SingleChildScrollView di dalam Card untuk membuat DataTable bisa discroll
                       child: SingleChildScrollView(
                         child: DataTable(
                           columnSpacing: 15,
                           headingRowColor:
-                              MaterialStateProperty.resolveWith<Color?>((
-                            Set<MaterialState> states,
+                              WidgetStateProperty.resolveWith<Color?>((
+                            Set<WidgetState> states,
                           ) {
-                            return Theme.of(
-                              context,
-                            ).primaryColor.withOpacity(0.1);
+                            return Theme.of(context).colorScheme.primary.withOpacity(0.1);
                           }),
                           headingTextStyle: const TextStyle(
                             fontWeight: FontWeight.bold,
@@ -184,40 +183,26 @@ class _AdminFirestoreDataWidgetState
                             DataColumn(label: Text('Tanggal')),
                             DataColumn(label: Text('Hari')),
                             DataColumn(label: Text('Total Galon')),
-                            DataColumn(label: Text('Aksi')), // Kolom untuk tombol hapus
+                            DataColumn(label: Text('Jml. Antar')),
+                            DataColumn(label: Text('Aksi')),
                           ],
                           rows: salesData.map((sale) {
                             return DataRow(
                               cells: <DataCell>[
                                 DataCell(
-                                  Text(
-                                    DateFormat(
-                                      'dd MMM yyyy',
-                                      'id_ID',
-                                    ).format(sale.date),
-                                  ),
+                                  Text(DateFormat('dd MMM yy', 'id_ID').format(sale.date)),
                                 ),
                                 DataCell(
-                                  Text(
-                                    DateFormat(
-                                      'EEEE',
-                                      'id_ID',
-                                    ).format(sale.date),
-                                  ),
+                                  Text(DateFormat('EEEE', 'id_ID').format(sale.date)),
                                 ),
                                 DataCell(Text(sale.quantity.toString())),
+                                DataCell(Text(sale.deliveryCount.toString())),
                                 DataCell(
                                   IconButton(
-                                    icon: const Icon(
-                                      Icons.delete,
-                                      color: Colors.red,
-                                    ),
+                                    icon: const Icon(Icons.delete, color: Colors.red),
                                     onPressed: sale.firestoreId == null
                                         ? null
-                                        : () => _deleteSale(
-                                            sale.firestoreId!,
-                                            sale.date,
-                                          ),
+                                        : () => _deleteSale(sale.firestoreId!, sale.date),
                                   ),
                                 ),
                               ],
