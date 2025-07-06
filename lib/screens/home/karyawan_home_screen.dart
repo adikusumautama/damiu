@@ -215,10 +215,7 @@ class KaryawanHomeScreen extends StatelessWidget {
         )),
       ]),
       CustomerBook(isOnline: viewModel.isOnline),
-      ProfileSection(user: viewModel.currentUser, onLogout: () => showModalBottomSheet(context: context, builder: (ctx) => Wrap(children: [
-        ListTile(leading: const Icon(Icons.storage_outlined), title: const Text('Manajemen Data Lokal'), onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalDataManagementScreen())); }),
-        ListTile(leading: const Icon(Icons.logout, color: Colors.red), title: const Text('Logout', style: TextStyle(color: Colors.red)), onTap: () => viewModel._authService.signOut()),
-      ]))),
+      ProfileSection(user: viewModel.currentUser, onLogout: () => _showLogoutConfirmDialog(context, viewModel)),
     ];
   }
 
@@ -278,5 +275,29 @@ class KaryawanHomeScreen extends StatelessWidget {
     } else if (successMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(successMessage), backgroundColor: Colors.green));
     }
+  }
+
+  // --- PERBAIKAN: Mengganti BottomSheet dengan Dialog Konfirmasi ---
+  void _showLogoutConfirmDialog(BuildContext context, KaryawanHomeViewModel viewModel) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Konfirmasi Logout'),
+        content: const Text('Anda yakin ingin keluar dari akun Anda?'),
+        actions: [
+          TextButton(
+            child: const Text('Batal'),
+            onPressed: () => Navigator.of(ctx).pop(),
+          ),
+          TextButton(
+            child: const Text('Logout', style: TextStyle(color: Colors.red)),
+            onPressed: () {
+              Navigator.of(ctx).pop(); // Tutup dialog
+              viewModel._authService.signOut();
+            },
+          ),
+        ],
+      ),
+    );
   }
 }

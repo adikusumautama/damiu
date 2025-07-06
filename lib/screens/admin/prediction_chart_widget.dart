@@ -36,18 +36,24 @@ class PredictionChartWidget extends StatelessWidget {
 
     final double lastHistoricalDayIndex =
         historicalSales.last.date.difference(startDate).inDays.toDouble();
-    final double totalChartDays = lastHistoricalDayIndex + daysToPredict;
+
+    
     // Buat FlSpot untuk prediksi berdasarkan predictedQuantities dari API
     if (predictedQuantities.isNotEmpty) {
       for (int i = 1; i <= daysToPredict; i++) {
         final double dayIndexRelativeToStart = lastHistoricalDayIndex + i;
         if (i <= predictedQuantities.length) {
           predictedSpots.add(
-            FlSpot(dayIndexRelativeToStart, predictedQuantities[i-1]),
+            FlSpot(dayIndexRelativeToStart, predictedQuantities[i - 1]),
           );
         }
       }
     }
+
+    // --- PERBAIKAN: Sambungkan garis historis dan prediksi ---
+    final List<FlSpot> connectedPredictedSpots = predictedSpots.isNotEmpty ? [historicalSpots.last, ...predictedSpots] : [];
+
+    final double totalChartDays = lastHistoricalDayIndex + daysToPredict;
 
     double bottomTitleInterval = 1.0;
     if (totalChartDays > 0) {
@@ -79,25 +85,26 @@ class PredictionChartWidget extends StatelessWidget {
               maxWidth: calculatedChartWidth > constraints.maxWidth ? calculatedChartWidth : constraints.maxWidth, // panjang berdasarkan jumlah data
             ),
             child: SizedBox(
-              height: 500,
+              height: 350,
               child: Container(
                 padding: const EdgeInsets.only(
-                  top: 100,
-                  left: 0,
-                  right: 50,
-                  bottom: 10,
+                  top: 24,
+                  right: 24,
+                  bottom: 12,
                 ),
                 child: LineChart(
                   LineChartData(
                     minX: 0,
                     maxX: effectiveMaxX,
-                    backgroundColor: const Color(0xfff0f0f0),
+                    backgroundColor: Colors.transparent,
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: true,
                       drawHorizontalLine: true,
+                      horizontalInterval: 10,
+                      verticalInterval: bottomTitleInterval,
                       getDrawingHorizontalLine: (value) => FlLine(
-                        color: Colors.grey.withOpacity(0.3),
+                        color: Colors.grey.withOpacity(0.2),
                         strokeWidth: 1,
                         dashArray: [5, 5],
                       ),
@@ -155,76 +162,102 @@ class PredictionChartWidget extends StatelessWidget {
                     ),
                     borderData: FlBorderData(
                       show: true,
-                      border: Border.all(color: Colors.grey.withOpacity(0.5), width: 1),
+                      border: Border.all(color: Colors.grey.withOpacity(0.1)),
                     ),
                     lineBarsData: [
                       LineChartBarData(
                         spots: historicalSpots,
                         isCurved: true,
-                        color: Colors.blue.shade700,
-                        barWidth: 3,
+                        gradient: LinearGradient(
+                          colors: [Colors.blue.shade600, Colors.blue.shade400],
+                        ),
+                        barWidth: 4,
                         isStrokeCapRound: true,
                         dotData: FlDotData(
-                          show: historicalSpots.length < 200,
+                          show: historicalSpots.length < 100,
                           getDotPainter: (spot, percent, barData, index) =>
-                              FlDotCirclePainter(radius: 3, color: Colors.blue.shade900, strokeWidth: 1, strokeColor: Colors.white),
+                              FlDotCirclePainter(radius: 4, color: Colors.blue, strokeWidth: 1.5, strokeColor: Colors.white),
                         ),
                         belowBarData: BarAreaData(
                           show: true,
-                          color: Colors.blue.withOpacity(0.2),
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.blue.shade300.withOpacity(0.4),
+                              Colors.blue.shade200.withOpacity(0.1),
+                            ],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
                         ),
                       ),
                       if (predictedSpots.isNotEmpty)
                         LineChartBarData(
-                          spots: predictedSpots,
+                          spots: connectedPredictedSpots,
                           isCurved: true,
-                          color: Colors.red.shade600,
-                          barWidth: 3,
+                          gradient: LinearGradient(
+                            colors: [Colors.deepPurple.shade500, Colors.deepPurple.shade300],
+                          ),
+                          barWidth: 4,
+                          dashArray: [8, 6],
                           dotData: const FlDotData(show: true),
                           belowBarData: BarAreaData(
                             show: true,
-                            color: Colors.red.withOpacity(0.2),
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.deepPurple.shade300.withOpacity(0.4),
+                                Colors.deepPurple.shade200.withOpacity(0.1),
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
                           ),
                         ),
                     ],
                     lineTouchData: LineTouchData(
                       handleBuiltInTouches: true,
-                      touchTooltipData: LineTouchTooltipData(
+                      touchTooltipData: LineTouchTooltipData( // --- PERBAIKAN: Tooltip yang lebih baik ---
+                        tooltipBgColor: Colors.black.withOpacity(0.8),
+                        tooltipRoundedRadius: 8,
                         getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
                           return touchedBarSpots.map((barSpot) {
                             final flSpot = barSpot;
                             final date = startDate.add(Duration(days: flSpot.x.toInt()));
                             final formattedDate = DateFormat('EEEE, dd MMM yyyy', 'id_ID').format(date);
                             String seriesName = '';
-                            Color seriesColor = Colors.white;
+                            TextStyle seriesTextStyle;
 
                             if (barSpot.barIndex == 0) {
-                              seriesName = 'Historis: ';
-                              seriesColor = Colors.blue;
-                            } else if (barSpot.barIndex == 1 && predictedSpots.isNotEmpty) {
-                              // Jika hanya ada historis (0) dan prediksi (1)
-                              seriesName = 'Prediksi: ';
-                              seriesColor = Colors.red;
+                              seriesName = 'Historis';
+                              seriesTextStyle = const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 14);
+                            } else if (barSpot.barIndex == 1) {
+                              seriesName = 'Prediksi';
+                              seriesTextStyle = const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold, fontSize: 14);
                             } else {
-                              // Fallback jika ada bar lain yang tidak terduga
-                              seriesName = 'Data: ';
-                              seriesColor = Colors.grey;
+                              seriesName = 'Data';
+                              seriesTextStyle = const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 14);
                             }
 
                             final displayY = flSpot.y < 0 ? 0 : flSpot.y;
+
+                            // Jangan tampilkan tooltip untuk titik sambungan
+                            if (barSpot.barIndex == 1 && flSpot.x == lastHistoricalDayIndex) {
+                              return null;
+                            }
+
                             return LineTooltipItem(
-                              '$seriesName${displayY.toStringAsFixed(0)} galon\n',
-                              TextStyle(
-                                color: seriesColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
+                              '$seriesName\n',
+                              seriesTextStyle,
                               children: [
                                 TextSpan(
-                                  text: formattedDate,
+                                  text: '${displayY.toStringAsFixed(0)} Galon',
+                                  style: seriesTextStyle.copyWith(fontSize: 12, fontWeight: FontWeight.normal),
+                                ),
+                                const TextSpan(text: '\n'),
+                                TextSpan(
+                                  text: formattedDate, 
                                   style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
+                                    color: Colors.white70,
+                                    fontSize: 11,
                                   ),
                                 ),
                               ],
@@ -246,22 +279,19 @@ class PredictionChartWidget extends StatelessWidget {
 }
 
 
-// Widget terpisah untuk menampilkan legenda grafik
+// --- PERBAIKAN: Widget legenda yang lebih baik ---
 class ChartLegend extends StatelessWidget {
   const ChartLegend({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(top: 16.0, bottom: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _LegendItem(color: Color.fromARGB(255, 30, 120, 209), text: 'Historis'),
-          _LegendItem(color: Color.fromARGB(255, 229, 57, 53), text: 'Prediksi'),
-          // Hapus legenda Regresi
-        ],
-      ),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _LegendItem(color: Colors.blue.shade500, text: 'Historis', isDashed: false),
+        const SizedBox(width: 24),
+        _LegendItem(color: Colors.deepPurple.shade400, text: 'Prediksi', isDashed: true),
+      ],
     );
   }
 }
@@ -269,16 +299,27 @@ class ChartLegend extends StatelessWidget {
 class _LegendItem extends StatelessWidget {
   final Color color;
   final String text;
+  final bool isDashed;
 
-  const _LegendItem({required this.color, required this.text});
+  const _LegendItem({required this.color, required this.text, this.isDashed = false});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(width: 12, height: 12, color: color),
-        const SizedBox(width: 4),
+        Container(
+          width: 24,
+          height: 4,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+            // Jika ingin menampilkan garis putus-putus di legenda,
+            // bisa menggunakan CustomPaint atau package `dotted_line`.
+            // Untuk kesederhanaan, kita gunakan warna solid saja.
+          ),
+        ),
+        const SizedBox(width: 8),
         Text(text, style: const TextStyle(fontSize: 12)),
       ],
     );
