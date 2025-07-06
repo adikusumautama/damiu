@@ -3,6 +3,7 @@
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/screens/admin/admin_dashboard_screen.dart';
 import 'package:damiu/screens/admin/admin_firestore_data_view_screen.dart';
+import 'package:damiu/screens/admin/admin_order_management_screen.dart'; // <-- Impor halaman baru
 import 'package:damiu/screens/admin/admin_prediction_view_screen.dart';
 import 'package:damiu/screens/admin/admin_sync_metadata_screen.dart';
 import 'package:damiu/screens/home/widgets/add_order_dialog.dart';
@@ -23,10 +24,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
 
+  // --- DAFTAR HALAMAN ADMIN YANG DIPERBARUI ---
   static const List<Widget> _adminPages = <Widget>[
     AdminDashboardScreen(),
     AdminPredictionViewScreen(),
-    AdminFirestoreDataWidget(),
+    AdminOrderManagementScreen(), // Halaman baru untuk CRUD Pesanan
+    AdminFirestoreDataWidget(), // Halaman untuk Rekap Penjualan
     AdminSyncMetadataScreen(),
   ];
 
@@ -41,11 +44,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       case 0:
         return 'Dasbor Admin';
       case 1:
-        return 'Grafik Prediksi Penjualan';
+        return 'Grafik Prediksi';
       case 2:
-        return 'Kelola Data Penjualan';
+        return 'Kelola Pesanan'; // Judul baru
       case 3:
-        return 'Kelola Metadata Sinkronisasi';
+        return 'Rekap Penjualan'; // Judul baru
+      case 4:
+        return 'Metadata Sinkronisasi';
       default:
         return 'Admin';
     }
@@ -88,7 +93,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             );
             
             try {
-              // --- PERUBAHAN: Memanggil fungsi baru yang lebih cerdas ---
               await _firestoreService.addOrderAndUpsertCustomer(newOrder);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -142,9 +146,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             icon: Icon(Icons.insights_outlined),
             label: 'Prediksi',
           ),
+          // --- TAB BARU ---
           BottomNavigationBarItem(
-            icon: Icon(Icons.storage_outlined),
-            label: 'Data',
+            icon: Icon(Icons.receipt_long_outlined),
+            label: 'Pesanan',
+          ),
+          // --- TAB LAMA YANG DISESUAIKAN ---
+          BottomNavigationBarItem(
+            icon: Icon(Icons.summarize_outlined),
+            label: 'Rekap',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.sync_alt_outlined),
