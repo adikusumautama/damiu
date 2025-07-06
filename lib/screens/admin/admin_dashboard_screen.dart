@@ -109,6 +109,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
         final int currentStock = stock?.currentStock ?? 0;
         final int initialStock = stock?.initialStock ?? 0;
+        final int emptyStock = stock?.initialEmptyStock ?? 0;
+        final int soldStock = initialStock - currentStock;
 
         return RefreshIndicator(
           onRefresh: () async {
@@ -123,7 +125,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 const SizedBox(height: 20),
                 _buildPredictionCard(),
                 const SizedBox(height: 20),
-                _buildStockSection(currentStock, initialStock),
+                _buildStockSection(currentStock, initialStock, emptyStock, soldStock),
                 const SizedBox(height: 20),
                 _buildOrderStatusSection(pendingOrdersCount, inDeliveryOrdersCount),
               ],
@@ -203,7 +205,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Widget _buildStockSection(int currentStock, int initialStock) {
+  Widget _buildStockSection(int currentStock, int initialStock, int emptyStock, int soldStock) {
     return Card(
       elevation: 4,
       child: Padding(
@@ -224,7 +226,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
             const Divider(height: 15, thickness: 1),
             _buildInfoRow(Icons.inventory_2_outlined, 'Stok Awal', '$initialStock Galon'),
-            _buildInfoRow(Icons.inventory, 'Sisa Stok', '$currentStock Galon'),
+            _buildInfoRow(Icons.inventory, 'Galon Tersedia', '$currentStock Galon'),
+            _buildInfoRow(Icons.hourglass_empty, 'Galon Kosong', '$emptyStock Galon'),
+            _buildInfoRow(Icons.point_of_sale, 'Total Terjual', '$soldStock Galon'),
           ],
         ),
       ),
