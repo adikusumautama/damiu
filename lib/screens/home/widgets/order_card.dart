@@ -110,6 +110,38 @@ class OrderCard extends StatelessWidget {
                   ),
                 ),
               ),
+            // --- TAMBAHAN: Menampilkan Item Lain ---
+            if (order.otherItems != null && order.otherItems!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Text.rich(
+                  TextSpan(
+                    style: const TextStyle(fontSize: 16, height: 1.5),
+                    children: [
+                      const TextSpan(text: 'Item Lain: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: order.otherItems),
+                    ],
+                  ),
+                ),
+              ),
+            // --- TAMBAHAN: Menampilkan Tanggal Pesanan Dibuat ---
+            if (order.createdAt != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12.0),
+                child: Text(
+                  'Dibuat: ${DateFormat('EEEE, dd MMM yyyy - HH:mm', 'id_ID').format(order.createdAt!)}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                ),
+              ),
+            // --- TAMBAHAN: Menampilkan Tanggal Pesanan Selesai ---
+            if (order.deliveredAt != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text(
+                  'Selesai: ${DateFormat('EEEE, dd MMM yyyy - HH:mm', 'id_ID').format(order.deliveredAt!)}',
+                  style: TextStyle(fontSize: 12, color: Colors.green.shade800, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600),
+                ),
+              ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
