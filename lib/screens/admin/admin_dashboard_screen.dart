@@ -3,9 +3,10 @@
 import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/models/daily_stock_model.dart';
 import 'package:damiu/models/order_model.dart';
+import 'package:damiu/models/prediction_result_model.dart'; // <-- Tambahkan impor ini
 import 'package:damiu/services/firestore_service.dart';
-import 'package:damiu/services/prediction_service.dart'; // <-- Tambahkan impor ini
-import 'package:damiu/screens/admin/admin_prediction_view_screen.dart'; // <-- Tambahkan impor ini
+import 'package:damiu/services/prediction_service.dart';
+import 'package:damiu/screens/admin/admin_prediction_view_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:rxdart/rxdart.dart';
@@ -19,18 +20,20 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final FirestoreService _firestoreService = FirestoreService();
-  final PredictionService _predictionService = PredictionService(); // <-- Tambahkan ini
-  late Future<Map<String, dynamic>> _predictionFuture; // <-- Tambahkan ini
+  final PredictionService _predictionService = PredictionService();
+  // --- PERBAIKAN: Menggunakan tipe data Future yang benar ---
+  late Future<ApiPredictionResult> _predictionFuture;
 
   @override
   void initState() {
     super.initState();
-    _loadPrediction(); // <-- Panggil fungsi untuk memuat prediksi
+    _loadPrediction();
   }
 
   void _loadPrediction() {
     setState(() {
-      _predictionFuture = _predictionService.getPrediction();
+      // --- PERBAIKAN: Memanggil nama fungsi yang benar ---
+      _predictionFuture = _predictionService.getPredictionsFromApi();
     });
   }
 
@@ -78,7 +81,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               children: [
                 _buildSummarySection(totalOrders, deliveredOrdersCount, totalRevenue),
                 const SizedBox(height: 20),
-                _buildPredictionCard(), // <-- PANGGIL KARTU PREDIKSI DI SINI
+                _buildPredictionCard(),
                 const SizedBox(height: 20),
                 _buildStockSection(currentStock, initialStock),
                 const SizedBox(height: 20),
@@ -91,36 +94,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // --- WIDGET BARU UNTUK KARTU PREDIKSI ---
+  // --- WIDGET PREDIKSI YANG SUDAH DISESUAIKAN DENGAN MODEL DATA BARU ---
   Widget _buildPredictionCard() {
     return Card(
       elevation: 4,
       color: Colors.indigo[50],
       child: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: FutureBuilder<Map<String, dynamic>>(
+        child: FutureBuilder<ApiPredictionResult>(
           future: _predictionFuture,
           builder: (context, snapshot) {
+            Widget content;
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              content = const Center(child: CircularProgressIndicator());
+            } else if (snapshot.hasError) {
+              content = Center(child: Text('Gagal memuat prediksi: ${snapshot.error}'));
+            } else if (!snapshot.hasData || !snapshot.data!.success) {
+              content = Center(child: Text(snapshot.data?.errorMessage ?? 'Data prediksi tidak tersedia.'));
+            } else {
+              // Jika sukses, tampilkan data prediksi
+              final predictionValue = snapshot.data!.predictionForNextDay?.predictedQuantity ?? 'N/A';
+              content = _buildInfoRow(Icons.online_prediction_outlined, 'Prediksi Penjualan Besok', '${predictionValue.toString()} Galon');
             }
-            if (snapshot.hasError) {
-              return Center(child: Text('Gagal memuat prediksi: ${snapshot.error}'));
-            }
-            if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return const Center(child: Text('Data prediksi tidak tersedia.'));
-            }
-
-            // Ambil data prediksi untuk besok
-            final tomorrow = DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 1)));
-            final predictionValue = snapshot.data?['predictions']?[tomorrow] ?? 'N/A';
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Fitur Unggulan ✨', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo)),
                 const SizedBox(height: 10),
-                _buildInfoRow(Icons.online_prediction_outlined, 'Prediksi Penjualan Besok', '${predictionValue.toString()} Galon'),
+                content, // Tampilkan konten (loading, error, atau data)
                 const SizedBox(height: 10),
                 Align(
                   alignment: Alignment.centerRight,
