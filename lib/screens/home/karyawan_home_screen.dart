@@ -1,5 +1,4 @@
 // lib/screens/home/karyawan_home_screen.dart
-
 import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -20,17 +19,12 @@ import 'widgets/customer_book.dart';
 import '../../main.dart' show resetDailyStockIfNeeded;
 import '../other/local_sales_management_screen.dart';
 
-// ======================================================================
-// VIEWMODEL: BERISI SEMUA STATE DAN LOGIKA BISNIS
-// ======================================================================
 class KaryawanHomeViewModel extends ChangeNotifier {
-  // Services
   final FirestoreService _firestoreService = FirestoreService();
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final SyncService _syncService = SyncService();
   final AuthService _authService = AuthService();
 
-  // State
   int _selectedIndex = 0;
   bool _isOnline = true;
   UserModel? _currentUser;
@@ -38,7 +32,6 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   bool _isSyncing = false;
   late StreamSubscription _connectivitySubscription;
 
-  // Getters
   int get selectedIndex => _selectedIndex;
   bool get isOnline => _isOnline;
   UserModel? get currentUser => _currentUser;
@@ -95,8 +88,6 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     try {
       await _syncService.syncAllData();
       await _loadLocalOrders();
-    } catch (e) {
-      // Sebaiknya gunakan logger di sini
     } finally {
       _isSyncing = false;
       notifyListeners();
@@ -130,7 +121,6 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     return await _firestoreService.completeOrderTransaction(order);
   }
   
-  // --- PERBAIKAN: Fungsi ini sekarang menerima argumen yang benar ---
   Future<void> onAddOrder({
     required String customerName,
     required int gallonQuantity,
@@ -159,7 +149,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       await _firestoreService.addOrder(newOrder);
     } else {
       await _dbHelper.insertOrder(newOrder);
-      await _loadLocalOrders(); // Langsung panggil method internal
+      await _loadLocalOrders();
     }
     notifyListeners();
   }
@@ -170,6 +160,8 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       builder: (ctx) => const SetStockDialog(),
     );
     if (result != null && _currentUser != null) {
+       // --- PERBAIKAN: Menambahkan pengecekan mounted ---
+      if (!context.mounted) return;
       if (_isOnline) {
         await _firestoreService.setInitialStock(
           date: DateTime.now(),
@@ -189,14 +181,10 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   
   Future<void> completeLocalOrder(Order order) async {
       await _dbHelper.updateOrderStatus(order.id!, OrderStatus.delivered, setDeliveredTime: true);
-      // Logika lain untuk offline (jika ada) bisa ditambahkan di sini
       await _loadLocalOrders();
   }
 }
 
-// ======================================================================
-// WIDGET (UI)
-// ======================================================================
 class KaryawanHomeScreen extends StatelessWidget {
   const KaryawanHomeScreen({super.key});
 
@@ -257,15 +245,15 @@ class KaryawanHomeScreen extends StatelessWidget {
   }
 
   List<Widget> _buildPages(BuildContext context, KaryawanHomeViewModel viewModel) {
+    // --- PERBAIKAN: getTodaysOrdersStream digunakan di sini ---
     Widget summaryWidget = viewModel.isOnline
         ? StreamBuilder<List<Order>>(
-            stream: viewModel._firestoreService.getOrdersStream(),
+            stream: viewModel._firestoreService.getTodaysOrdersStream(),
             builder: (_, snapshot) => OrderSummary(orders: snapshot.data ?? [], isOnline: true),
           )
         : OrderSummary(orders: viewModel.localOrders, isOnline: false);
 
     return [
-      // Halaman Beranda
       Column(
         children: [
           summaryWidget,
@@ -296,9 +284,7 @@ class KaryawanHomeScreen extends StatelessWidget {
           ),
         ],
       ),
-      // Halaman Buku Pelanggan
       CustomerBook(isOnline: viewModel.isOnline),
-      // Halaman Profil
       ProfileSection(
         user: viewModel.currentUser,
         onLogout: () {
@@ -324,20 +310,11 @@ class KaryawanHomeScreen extends StatelessWidget {
     ];
   }
 
-  // --- PERBAIKAN: Tipe data parameter callback sekarang sudah benar ---
   void _showAddOrderDialog(BuildContext context, KaryawanHomeViewModel viewModel) {
     showDialog(
       context: context,
       builder: (ctx) => AddOrderDialog(
-        onSubmit: ({
-          required String customerName,
-          required int gallonQuantity,
-          String? otherItems,
-          String? address,
-          String? phoneNumber,
-          required DateTime date,
-        }) async {
-          // Memanggil method di ViewModel dengan argumen yang benar
+        onSubmit: ({ customerName, gallonQuantity, otherItems, address, phoneNumber, date }) async {
           await viewModel.onAddOrder(
             customerName: customerName,
             gallonQuantity: gallonQuantity,
@@ -351,7 +328,6 @@ class KaryawanHomeScreen extends StatelessWidget {
     );
   }
 
-  // --- PERBAIKAN: Menambahkan pengecekan `mounted` sebelum menampilkan SnackBar ---
   void _handleApiError(BuildContext context, String? error) {
     if (error != null && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
