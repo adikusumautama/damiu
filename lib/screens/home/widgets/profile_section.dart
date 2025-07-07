@@ -24,8 +24,8 @@ class ProfileSection extends StatelessWidget {
             Text(user?.email ?? '-', style: const TextStyle(fontSize: 16, color: Colors.grey)),
             const SizedBox(height: 32),
             ElevatedButton.icon(
-              icon: const Icon(Icons.logout),
-              label: const Text('Logout'),
+              icon: const Icon(Icons.logout, color: Colors.white),
+              label: const Text('Logout', style: TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: onLogout,
             ),
