@@ -242,25 +242,18 @@ class FirestoreService {
   Future<String?> adjustCurrentStock(int quantityChange) async {
     final docId = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final docRef = _db.collection('daily_stock_levels').doc(docId);
+
+    // --- PERBAIKAN KRITIS UNTUK OFFLINE ---
+    // Menggunakan `set` dengan `merge: true` adalah operasi "upsert" yang aman untuk offline.
+    // Ini akan membuat dokumen jika belum ada, atau memperbaruinya jika sudah ada,
+    // tanpa perlu melakukan `get` atau `update` terlebih dahulu yang bisa gagal saat offline.
     try {
-      // --- PERBAIKAN: Tambah juga `initial_stock` agar `Total Terjual` tidak berubah ---
-      await docRef.update({
+      await docRef.set({
         'current_stock': FieldValue.increment(quantityChange),
-        'initial_stock': FieldValue.increment(quantityChange), // <-- TAMBAHKAN INI
         'last_updated': FieldValue.serverTimestamp()
-      });
+      }, SetOptions(merge: true));
       return null;
     } catch (e) {
-      if (e is FirebaseException && e.code == 'not-found') {
-        // Jika dokumen belum ada, buat dengan nilai awal yang benar
-        await docRef.set({
-          'current_stock': quantityChange,
-          'initial_stock': quantityChange, // <-- TAMBAHKAN INI
-          'initial_empty_stock': 0,
-          'last_updated': FieldValue.serverTimestamp()
-        }, SetOptions(merge: true));
-        return null;
-      }
       return e.toString();
     }
   }
@@ -268,20 +261,22 @@ class FirestoreService {
   Future<String?> setInitialStock({required DateTime date, required int filledStock, required String updatedByUid}) async {
     try {
       String docId = DateFormat('yyyy-MM-dd').format(date);
-      await _db.collection('daily_stock_levels').doc(docId).set({'initial_stock': filledStock, 'current_stock': filledStock, 'last_updated': Timestamp.now(), 'updated_by_uid': updatedByUid}, SetOptions(merge: true));
+      // Menambahkan initial_empty_stock: 0 untuk konsistensi data
+      await _db.collection('daily_stock_levels').doc(docId).set({'initial_stock': filledStock, 'current_stock': filledStock, 'initial_empty_stock': 0, 'last_updated': Timestamp.now(), 'updated_by_uid': updatedByUid}, SetOptions(merge: true));
       return null;
     } catch (e) {
       return e.toString();
     }
   }
 
-  /// Menambah galon kosong yang kembali DAN langsung menambahkannya ke stok tersedia.
-  /// Ini juga menambah stok awal agar kalkulasi 'Total Terjual' tetap benar.
   Future<String?> incrementEmptyStock({required int quantity, required String updatedByUid}) async {
     final docId = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final docRef = _db.collection('daily_stock_levels').doc(docId);
     try {
-      await docRef.update({
+      // --- PERBAIKAN KRITIS UNTUK OFFLINE ---
+      // Menggunakan `set` dengan `merge: true` agar aman saat offline.
+      // Logika di bawah ini (menambah initial_stock) sudah sesuai dengan kode asli Anda.
+      await docRef.set({
         // Tambah ke stok tersedia (karena langsung diisi ulang)
         'current_stock': FieldValue.increment(quantity),
         // Tambah ke stok awal (agar 'Total Terjual' tidak berkurang)
@@ -289,19 +284,9 @@ class FirestoreService {
         'initial_empty_stock': FieldValue.increment(quantity),
         'last_updated': FieldValue.serverTimestamp(),
         'updated_by_uid': updatedByUid
-      });
+      }, SetOptions(merge: true));
       return null;
     } catch (e) {
-      if (e is FirebaseException && e.code == 'not-found') {
-        await docRef.set({
-          'initial_stock': quantity,
-          'current_stock': quantity,
-          'initial_empty_stock': quantity,
-          'last_updated': FieldValue.serverTimestamp(),
-          'updated_by_uid': updatedByUid
-        }, SetOptions(merge: true));
-        return null;
-      }
       return e.toString();
     }
   }
