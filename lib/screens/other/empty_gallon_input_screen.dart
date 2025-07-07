@@ -25,42 +25,64 @@ class _EmptyGallonInputScreenState extends State<EmptyGallonInputScreen> {
 
   Future<void> _saveEmptyGallons() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
-    final employeeUid = _authService.getCurrentUser()?.uid;
-    if (employeeUid == null) {
+
+    try {
+      final employeeUid = _authService.getCurrentUser()?.uid;
+      if (employeeUid == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Error: Pengguna tidak ditemukan.'),
+                backgroundColor: Colors.red),
+          );
+        }
+        return;
+      }
+
+      final quantity = int.parse(_gallonQuantityController.text);
+
+      // Panggil kedua fungsi Firestore. SDK akan menangani antrean saat offline.
+      final error1 = await _firestoreService.incrementEmptyStock(
+        quantity: quantity,
+        updatedByUid: employeeUid,
+      );
+
+      final error2 = await _firestoreService.addReturnedGallonLog(
+        quantity: quantity,
+        employeeUid: employeeUid,
+      );
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error: Pengguna tidak ditemukan.')),
-        );
+        if (error1 == null && error2 == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Berhasil! Data akan disinkronkan saat kembali online.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context, true);
+        } else {
+          final combinedError = [error1, error2].where((e) => e != null).join('\n');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('Gagal memperbarui data: $combinedError'),
+                backgroundColor: Colors.red),
+          );
+        }
       }
-      setState(() => _isLoading = false);
-      return;
-    }
-
-    final quantity = int.parse(_gallonQuantityController.text);
-    final error = await _firestoreService.incrementEmptyStock(
-      quantity: quantity,
-      updatedByUid: employeeUid,
-    );
-
-    await _firestoreService.addReturnedGallonLog(
-      quantity: quantity,
-      employeeUid: employeeUid,
-    );
-
-    if (mounted) {
-      if (error == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Berhasil menambah data galon kosong!')),
-        );
-        Navigator.pop(context, true);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal memperbarui data: $error')),
-        );
+    } catch (e) {
+      // Menangkap error tak terduga (misalnya, jika plugin Firestore sendiri error)
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Terjadi kesalahan: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      // Blok ini akan selalu dieksekusi, memastikan loading indicator dimatikan.
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
-    if (mounted) setState(() => _isLoading = false);
   }
 
   @override

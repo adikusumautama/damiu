@@ -6,6 +6,7 @@ import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/models/daily_stock_model.dart';
 import 'package:damiu/models/daily_sync_metadata_model.dart';
 import 'package:damiu/models/order_model.dart';
+import 'package:damiu/models/returned_gallon_log_model.dart';
 import 'package:intl/intl.dart';
 
 class FirestoreService {
@@ -171,6 +172,40 @@ class FirestoreService {
       return null;
     } catch (e) {
       return e.toString();
+    }
+  }
+
+  // --- FUNGSI CRUD LOG GALON KEMBALI ---
+  Stream<List<ReturnedGallonLog>> getReturnedGallonLogsStream() {
+    return _db
+        .collection('returned_gallons_log')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => ReturnedGallonLog.fromFirestore(doc))
+            .toList());
+  }
+
+  Future<String?> deleteReturnedGallonLog(String id) async {
+    try {
+      await _db.collection('returned_gallons_log').doc(id).delete();
+      return null;
+    } catch (e) {
+      return 'Gagal menghapus log: ${e.toString()}';
+    }
+  }
+
+  Future<String?> deleteAllReturnedGallonLogs() async {
+    try {
+      final snapshot = await _db.collection('returned_gallons_log').get();
+      final batch = _db.batch();
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      return null; // Sukses
+    } catch (e) {
+      return 'Gagal menghapus semua log: ${e.toString()}';
     }
   }
 

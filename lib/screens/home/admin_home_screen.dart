@@ -6,6 +6,7 @@ import 'package:damiu/screens/admin/admin_customer_management_screen.dart';
 import 'package:damiu/screens/admin/admin_firestore_data_view_screen.dart';
 import 'package:damiu/screens/admin/admin_order_management_screen.dart'; // <-- Impor halaman baru
 import 'package:damiu/screens/admin/admin_prediction_view_screen.dart';
+import 'package:damiu/screens/admin/admin_returned_gallon_log_screen.dart';
 import 'package:damiu/screens/home/widgets/add_order_dialog.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/firestore_service.dart';
@@ -30,7 +31,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     AdminPredictionViewScreen(),
     AdminOrderManagementScreen(), // Halaman baru untuk CRUD Pesanan
     AdminFirestoreDataWidget(), // Halaman untuk Rekap Penjualan
-    const AdminCustomerManagementScreen(), // Halaman baru untuk CRUD Pelanggan
+    AdminCustomerManagementScreen(), // Halaman baru untuk CRUD Pelanggan
+    AdminReturnedGallonLogScreen(), // Halaman baru untuk Log Galon Kembali
   ];
 
   void _onItemTapped(int index) {
@@ -51,6 +53,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         return 'Rekap Penjualan'; // Judul baru
       case 4:
         return 'Kelola Pelanggan';
+      case 5:
+        return 'Log Galon Kembali';
       default:
         return 'Admin';
     }
@@ -114,7 +118,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: _selectedIndex == 5 // Jika tab Log Galon dipilih
+          ? null // Tidak menampilkan AppBar utama, karena halaman log sudah punya AppBar sendiri
+          : AppBar(
         title: Text(_getAppBarTitle(_selectedIndex)),
         actions: [
           IconButton(
@@ -157,6 +163,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.people_outline),
             label: 'Pelanggan',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history_toggle_off_outlined),
+            label: 'Log Galon',
           ),
         ],
         currentIndex: _selectedIndex,

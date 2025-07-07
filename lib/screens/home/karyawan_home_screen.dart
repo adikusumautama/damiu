@@ -9,6 +9,7 @@ import 'package:damiu/models/daily_stock_model.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/firestore_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:damiu/screens/home/widgets/add_order_dialog.dart';
 import 'package:damiu/screens/home/widgets/order_summary.dart';
 import 'package:damiu/screens/home/widgets/orders_list.dart';
@@ -26,9 +27,15 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   String _selectedStatus = 'Semua';
   late StreamSubscription _connectivitySubscription;
 
-  // --- TAMBAHAN: State untuk menampilkan Snackbar ---
+  // --- State untuk menampilkan Snackbar Konektivitas ---
   String? _snackBarMessage;
   Color? _snackBarColor;
+
+  // --- State untuk Input Galon Kosong ---
+  final GlobalKey<FormState> _emptyGallonFormKey = GlobalKey<FormState>();
+  final TextEditingController _gallonQuantityController = TextEditingController();
+  String? _emptyGallonSnackBarMessage;
+  Color? _emptyGallonSnackBarColor;
 
   int get selectedIndex => _selectedIndex;
   bool get isOnline => _isOnline;
@@ -41,6 +48,14 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     _snackBarMessage = null;
     _snackBarColor = null;
   }
+  
+  void clearEmptyGallonSnackBar() {
+    _emptyGallonSnackBarMessage = null;
+    _emptyGallonSnackBarColor = null;
+  }
+
+  String? get emptyGallonSnackBarMessage => _emptyGallonSnackBarMessage;
+  Color? get emptyGallonSnackBarColor => _emptyGallonSnackBarColor;
 
   KaryawanHomeViewModel() {
     _init();
@@ -60,6 +75,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _connectivitySubscription.cancel();
+    _gallonQuantityController.dispose();
     super.dispose();
   }
 
@@ -156,6 +172,42 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     await _firestoreService.addOrderAndUpsertCustomer(newOrder);
     notifyListeners();
   }
+
+  // --- FUNGSI BARU: Menyimpan Galon Kosong ---
+  void saveEmptyGallons() {
+    if (!_emptyGallonFormKey.currentState!.validate()) return;
+
+    final employeeUid = _currentUser?.uid;
+
+    // Validasi penting: Pastikan UID karyawan tersedia sebelum melanjutkan.
+    if (employeeUid == null) {
+      _emptyGallonSnackBarMessage = 'Error: Pengguna tidak ditemukan. Coba lagi.';
+      _emptyGallonSnackBarColor = Colors.red;
+      notifyListeners();
+      return;
+    }
+
+    final quantity = int.parse(_gallonQuantityController.text);
+
+    // Beri feedback ke pengguna secepatnya dan bersihkan input.
+    // Operasi database akan berjalan di latar belakang.
+    _gallonQuantityController.clear();
+    _emptyGallonSnackBarMessage =
+        'Berhasil! Data akan disinkronkan saat kembali online.';
+    _emptyGallonSnackBarColor = Colors.green;
+    notifyListeners();
+
+    // Jalankan operasi Firestore di latar belakang.
+    // SDK Firestore akan menangani antrean saat offline secara otomatis.
+    _firestoreService.incrementEmptyStock(
+      quantity: quantity,
+      updatedByUid: employeeUid,
+    );
+    _firestoreService.addReturnedGallonLog(
+        quantity: quantity,
+        employeeUid: employeeUid,
+    );
+  }
 }
 
 class KaryawanHomeScreen extends StatelessWidget {
@@ -175,6 +227,15 @@ class KaryawanHomeScreen extends StatelessWidget {
               ));
               viewModel.clearSnackBar();
             }
+
+            // --- PERBAIKAN: Tampilkan Snackbar untuk input galon kosong ---
+            if (viewModel.emptyGallonSnackBarMessage != null) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(viewModel.emptyGallonSnackBarMessage!),
+                backgroundColor: viewModel.emptyGallonSnackBarColor,
+              ));
+              viewModel.clearEmptyGallonSnackBar();
+            }
           });
 
           return Scaffold(
@@ -190,7 +251,7 @@ class KaryawanHomeScreen extends StatelessWidget {
                         child: const Text(
                           'Mode Offline',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white, fontSize: 12),
+                          style: TextStyle(color: Color.fromARGB(255, 79, 79, 79), fontSize: 12),
                         ),
                       ),
                     )
@@ -198,13 +259,17 @@ class KaryawanHomeScreen extends StatelessWidget {
             ),
             body: IndexedStack(
               index: viewModel.selectedIndex,
-              children: _buildPages(context, viewModel),
+              children: _buildBodyPages(context, viewModel),
             ),
             bottomNavigationBar: BottomNavigationBar(
               items: const [
                 BottomNavigationBarItem(
                   icon: Icon(Icons.home),
                   label: 'Beranda',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.receipt_long_outlined),
+                  label: 'Pesanan',
                 ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.book),
@@ -217,6 +282,10 @@ class KaryawanHomeScreen extends StatelessWidget {
               ],
               currentIndex: viewModel.selectedIndex,
               onTap: viewModel.onItemTapped,
+              // --- PERBAIKAN: Mengatur tipe agar warna ikon non-aktif terlihat ---
+              type: BottomNavigationBarType.fixed,
+              selectedItemColor: Theme.of(context).primaryColor,
+              unselectedItemColor: Colors.grey,
             ),
             floatingActionButton: viewModel.selectedIndex == 0
                 ? FloatingActionButton(
@@ -232,9 +301,10 @@ class KaryawanHomeScreen extends StatelessWidget {
   }
 
   String _getAppBarTitle(int index) =>
-      ['Beranda', 'Buku Pelanggan', 'Profil'][index];
+      ['Beranda', 'Daftar Pesanan', 'Buku Pelanggan', 'Profil'][index];
 
-  List<Widget> _buildPages(
+  // --- PERBAIKAN: Memisahkan halaman Beranda dan Pesanan ---
+  List<Widget> _buildBodyPages(
     BuildContext context,
     KaryawanHomeViewModel viewModel,
   ) {
@@ -247,8 +317,8 @@ class KaryawanHomeScreen extends StatelessWidget {
       ),
     );
 
-    return [
-      Column(
+    Widget berandaPage = SingleChildScrollView(
+      child: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -273,38 +343,93 @@ class KaryawanHomeScreen extends StatelessWidget {
               ),
             ),
           ),
-          _buildFilterChips(context, viewModel),
-          Expanded(
-            // --- PERBAIKAN: Selalu gunakan OrdersStreamWidget ---
-            // Firestore SDK akan secara otomatis menyajikan data dari cache saat offline.
-            child: OrdersStreamWidget(
-              status: viewModel.selectedStatus,
-              onStartDelivery: (o) async {
-                final e = await viewModel.onStartDelivery(o);
-                if (context.mounted) _handleApiError(context, e);
-              },
-              onCompleteDelivery: (o) async {
-                final e = await viewModel.onCompleteDelivery(o);
-                if (context.mounted) _handleApiError(context, e);
-              },
-              onEdit: (o) => _showAddOrderDialog(
-                context,
-                viewModel,
-                orderToEdit: o,
-              ),
-              onDelete: (o) =>
-                  _showDeleteConfirmDialog(context, viewModel, o),
-            ),
-          ),
+          _buildEmptyGallonInput(context, viewModel),
         ],
       ),
-      // --- PERBAIKAN: CustomerBook juga harus selalu online-first ---
+    );
+
+    Widget pesananPage = Column(
+      children: [
+          _buildFilterChips(context, viewModel),
+        Expanded(
+          child: OrdersStreamWidget(
+            status: viewModel.selectedStatus,
+            onStartDelivery: (o) async {
+              final e = await viewModel.onStartDelivery(o);
+              if (context.mounted) _handleApiError(context, e);
+            },
+            onCompleteDelivery: (o) async {
+              final e = await viewModel.onCompleteDelivery(o);
+              if (context.mounted) _handleApiError(context, e);
+            },
+            onEdit: (o) => _showAddOrderDialog(
+              context,
+              viewModel,
+              orderToEdit: o,
+            ),
+            onDelete: (o) => _showDeleteConfirmDialog(context, viewModel, o),
+          ),
+        ),
+        ],
+      );
+
+    return [
+      berandaPage,
+      pesananPage,
       const CustomerBook(isOnline: true),
       ProfileSection(
         user: viewModel.currentUser,
         onLogout: () => _showLogoutConfirmDialog(context, viewModel),
       ),
     ];
+  }
+
+
+  // --- WIDGET BARU: Input Galon Kosong ---
+  Widget _buildEmptyGallonInput(BuildContext context, KaryawanHomeViewModel viewModel) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: viewModel._emptyGallonFormKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Input Galon Kosong Kembali',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: viewModel._gallonQuantityController,
+                  decoration: const InputDecoration(
+                    labelText: 'Jumlah Galon',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.hourglass_empty_outlined),
+                  ),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  validator: (v) => (v == null || v.isEmpty || int.tryParse(v) == null || int.parse(v) <= 0)
+                      ? 'Masukkan jumlah valid'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Simpan'),
+                  onPressed: viewModel.saveEmptyGallons,
+                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildFilterChips(
@@ -320,17 +445,17 @@ class KaryawanHomeScreen extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
       child: SizedBox(
-        height: 40,
+        height: 36,
         child: ListView(
           scrollDirection: Axis.horizontal,
           children: statuses.map((status) {
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4.0),
               child: FilterChip(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-
+                shape: const StadiumBorder(),
+                side: BorderSide(
+                    color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                    width: 0.5),
                 label: Text(status),
                 selected: viewModel.selectedStatus == status,
                 onSelected: (bool selected) {
