@@ -2,7 +2,7 @@
 
 import 'package:damiu/models/order_model.dart'; // PERBAIKAN: Menggunakan OrderModel
 import 'package:damiu/services/auth_service.dart';
-import 'package:damiu/services/database_helper.dart';
+import 'package:damiu/services/firestore_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -18,7 +18,7 @@ class _DailySalesInputScreenState extends State<DailySalesInputScreen> {
   final _gallonQuantityController = TextEditingController();
   final _customerNameController = TextEditingController(); // Tambahan untuk nama pelanggan
   bool _isLoading = false;
-  final DatabaseHelper _dbHelper = DatabaseHelper();
+  final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
 
   @override
@@ -53,11 +53,11 @@ class _DailySalesInputScreenState extends State<DailySalesInputScreen> {
         status: OrderStatus.pending, // Status awal adalah pending
         createdAt: DateTime.now(),
         employeeUid: employeeUid,
-        isSynced: false, // Disimpan lokal terlebih dahulu
+        isSynced: true, // Selalu true, Firestore yang akan menangani antrean offline
       );
 
       try {
-        await _dbHelper.insertOrder(newOrder); // Menggunakan insertOrder
+        await _firestoreService.addOrderAndUpsertCustomer(newOrder); // Menggunakan service Firestore
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Pesanan langsung berhasil disimpan!')),

@@ -5,11 +5,9 @@ import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/models/user_model.dart';
-import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/models/daily_stock_model.dart';
+import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/firestore_service.dart';
-import 'package:damiu/services/database_helper.dart';
-import 'package:damiu/services/sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:damiu/screens/home/widgets/add_order_dialog.dart';
 import 'package:damiu/screens/home/widgets/order_summary.dart';
@@ -18,43 +16,38 @@ import 'package:damiu/screens/home/widgets/resource_board.dart';
 import 'package:damiu/screens/home/widgets/profile_section.dart';
 import 'package:damiu/screens/home/widgets/customer_book.dart';
 import 'package:damiu/main.dart' show resetDailyStockIfNeeded;
-import 'package:damiu/screens/other/local_data_management_screen.dart';
 
 class KaryawanHomeViewModel extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
-  final DatabaseHelper _dbHelper = DatabaseHelper();
-  final SyncService _syncService = SyncService();
   final AuthService _authService = AuthService();
   int _selectedIndex = 0;
   bool _isOnline = true;
   UserModel? _currentUser;
-  List<Order> _localOrders = [];
-  DailyStock? _localStock;
   String _selectedStatus = 'Semua';
-  bool _isSyncing = false;
   late StreamSubscription _connectivitySubscription;
+
+  // --- TAMBAHAN: State untuk menampilkan Snackbar ---
+  String? _snackBarMessage;
+  Color? _snackBarColor;
+
   int get selectedIndex => _selectedIndex;
   bool get isOnline => _isOnline;
   UserModel? get currentUser => _currentUser;
   String get selectedStatus => _selectedStatus;
-  List<Order> get localOrders {
-    if (_selectedStatus == 'Semua') {
-      return _localOrders;
-    }
-    return _localOrders.where((o) => o.status == _selectedStatus).toList();
-  }
+  String? get snackBarMessage => _snackBarMessage;
+  Color? get snackBarColor => _snackBarColor;
 
-  DailyStock? get localStock => _localStock;
-  bool get isSyncing => _isSyncing;
+  void clearSnackBar() {
+    _snackBarMessage = null;
+    _snackBarColor = null;
+  }
 
   KaryawanHomeViewModel() {
     _init();
   }
 
   void _init() async {
-    await _loadLocalStock();
     await _loadCurrentUser();
-    await _loadLocalOrders();
     _initConnectivity();
     await resetDailyStockIfNeeded(
       isOnline: _isOnline,
@@ -86,43 +79,21 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     final currentlyOnline =
         results.isNotEmpty && results.first != ConnectivityResult.none;
     if (currentlyOnline == _isOnline && !isInitial) return;
-    _isOnline = currentlyOnline;
-    if (!_isOnline) {
-      await _loadLocalStock();
-    }
-    notifyListeners();
-    if (currentlyOnline && !isInitial) await syncData();
-  }
 
-  Future<void> syncData() async {
-    if (_isSyncing) return;
-    _isSyncing = true;
-    notifyListeners();
-    try {
-      await _syncService.syncAllData();
-      await _loadLocalOrders();
-      await _loadLocalStock();
-    } finally {
-      if (hasListeners) {
-        _isSyncing = false;
-        notifyListeners();
-      }
+    _isOnline = currentlyOnline;
+    if (hasListeners) {
+      _snackBarMessage = _isOnline
+          ? 'Anda kembali online. Semua data akan disinkronkan secara otomatis.'
+          : 'Anda sekarang offline. Perubahan akan disimpan di perangkat.';
+      _snackBarColor = _isOnline ? Colors.green : Colors.orange[800];
     }
+
+    notifyListeners();
   }
 
   Future<void> _loadCurrentUser() async {
     final user = _authService.getCurrentUser();
     if (user != null) _currentUser = await _authService.getUserModel(user.uid);
-    if (hasListeners) notifyListeners();
-  }
-
-  Future<void> _loadLocalOrders() async {
-    _localOrders = await _dbHelper.getUnsyncedOrders();
-    if (hasListeners) notifyListeners();
-  }
-
-  Future<void> _loadLocalStock() async {
-    _localStock = await _dbHelper.getDailyStock(DateTime.now());
     if (hasListeners) notifyListeners();
   }
 
@@ -147,29 +118,9 @@ class KaryawanHomeViewModel extends ChangeNotifier {
           order.firestoreId!,
           OrderStatus.inDelivery,
         );
-  Future<String?> onCompleteDelivery(Order order) async {
-    if (_isOnline) {
-      // Mode Online: Lakukan transaksi lengkap ke Firestore
-      return await _firestoreService.completeOrderTransaction(order);
-    } else {
-      // Mode Offline: Perbarui status di database lokal untuk disinkronkan nanti
-      if (order.firestoreId != null) {
-        final localOrder = await _dbHelper.getOrderByFirestoreId(
-          order.firestoreId!,
-        );
-        if (localOrder != null && localOrder.id != null) {
-          await _dbHelper.updateOrderStatus(
-            localOrder.id!,
-            OrderStatus.delivered,
-            setDeliveredTime: true,
-          );
-          await _loadLocalOrders(); // Muat ulang daftar pesanan lokal
-          return null; // Sukses
-        }
-      }
-      return 'Pesanan tidak ditemukan di database lokal untuk diselesaikan saat offline.';
-    }
-  }
+  // Cukup panggil metode batched, Firestore akan menanganinya baik online maupun offline.
+  Future<String?> onCompleteDelivery(Order order) async =>
+      await _firestoreService.completeOrderBatched(order);
 
   Future<void> onAddOrder({
     required String customerName,
@@ -199,25 +150,11 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       status: OrderStatus.pending,
       createdAt: finalDateTime,
       employeeUid: _currentUser?.uid,
-      isSynced: _isOnline,
+      isSynced: true, // Selalu true, biarkan Firestore yang menangani antrean offline
     );
-    if (_isOnline) {
-      await _firestoreService.addOrderAndUpsertCustomer(newOrder);
-    } else {
-      await _dbHelper.insertOrder(newOrder);
-      await _loadLocalOrders();
-    }
-    if (hasListeners) notifyListeners();
-  }
-
-  Future<void> completeLocalOrder(Order order) async {
-    if (order.id == null) return;
-    await _dbHelper.updateOrderStatus(
-      order.id!,
-      OrderStatus.delivered,
-      setDeliveredTime: true,
-    );
-    await _loadLocalOrders();
+    // Cukup panggil metode Firestore, SDK akan menangani caching & antrean offline.
+    await _firestoreService.addOrderAndUpsertCustomer(newOrder);
+    notifyListeners();
   }
 }
 
@@ -229,23 +166,20 @@ class KaryawanHomeScreen extends StatelessWidget {
       create: (_) => KaryawanHomeViewModel(),
       child: Consumer<KaryawanHomeViewModel>(
         builder: (context, viewModel, child) {
+          // --- PERBAIKAN: Tampilkan Snackbar saat status koneksi berubah ---
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (viewModel.snackBarMessage != null) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(viewModel.snackBarMessage!),
+                backgroundColor: viewModel.snackBarColor,
+              ));
+              viewModel.clearSnackBar();
+            }
+          });
+
           return Scaffold(
             appBar: AppBar(
               title: Text(_getAppBarTitle(viewModel.selectedIndex)),
-              actions: [
-                if (viewModel.isSyncing)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 16.0),
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 3,
-                      ),
-                    ),
-                  ),
-              ],
               bottom: !viewModel.isOnline
                   ? PreferredSize(
                       preferredSize: const Size.fromHeight(24.0),
@@ -304,13 +238,15 @@ class KaryawanHomeScreen extends StatelessWidget {
     BuildContext context,
     KaryawanHomeViewModel viewModel,
   ) {
-    Widget summaryWidget = viewModel.isOnline
-        ? StreamBuilder<List<Order>>(
-            stream: viewModel._firestoreService.getTodaysOrdersStream(),
-            builder: (_, s) =>
-                OrderSummary(orders: s.data ?? [], isOnline: true),
-          )
-        : OrderSummary(orders: viewModel.localOrders, isOnline: false);
+    // --- PERBAIKAN: Selalu gunakan StreamBuilder, Firestore menangani offline ---
+    Widget summaryWidget = StreamBuilder<List<Order>>(
+      stream: viewModel._firestoreService.getTodaysOrdersStream(),
+      builder: (_, s) => OrderSummary(
+        orders: s.data ?? [],
+        isOnline: viewModel.isOnline,
+      ),
+    );
+
     return [
       Column(
         children: [
@@ -326,64 +262,44 @@ class KaryawanHomeScreen extends StatelessWidget {
                 children: [
                   summaryWidget,
                   const Divider(height: 1, indent: 16, endIndent: 16),
-                  viewModel.isOnline
-                      ? StreamBuilder<DailyStock?>(
-                          stream: viewModel._firestoreService
-                              .getDailyStockStream(DateTime.now()),
-                          builder: (context, snapshot) =>
-                              ResourceBoard(stock: snapshot.data),
-                        )
-                      : ResourceBoard(stock: viewModel.localStock),
+                  // --- PERBAIKAN: Selalu gunakan StreamBuilder ---
+                  StreamBuilder<DailyStock?>(
+                    stream: viewModel._firestoreService
+                        .getDailyStockStream(DateTime.now()),
+                    builder: (context, snapshot) =>
+                        ResourceBoard(stock: snapshot.data),
+                  ),
                 ],
               ),
             ),
           ),
           _buildFilterChips(context, viewModel),
           Expanded(
-            child: RefreshIndicator(
-              onRefresh: () => viewModel.syncData(),
-              child: viewModel.isOnline
-                  ? OrdersStreamWidget(
-                      status: viewModel.selectedStatus,
-                      onStartDelivery: (o) async {
-                        final e = await viewModel.onStartDelivery(o);
-                        if (context.mounted) _handleApiError(context, e);
-                      },
-                      onCompleteDelivery: (o) async {
-                        final e = await viewModel.onCompleteDelivery(o);
-                        if (context.mounted) _handleApiError(context, e);
-                      },
-                      onEdit: (o) => _showAddOrderDialog(
-                        context,
-                        viewModel,
-                        orderToEdit: o,
-                      ),
-                      onDelete: (o) =>
-                          _showDeleteConfirmDialog(context, viewModel, o),
-                    )
-                  : OrdersLocalWidget(
-                      orders: viewModel
-                          .localOrders, // Getter ini sudah memfilter data
-                      onStartDelivery: (o) async {
-                        if (o.id != null) {
-                          await viewModel._dbHelper.updateOrderStatus(
-                            o.id!,
-                            OrderStatus.inDelivery,
-                          );
-                          await viewModel._loadLocalOrders();
-                        }
-                      },
-                      onCompleteDelivery: (o) async {
-                        if (o.id != null) await viewModel.completeLocalOrder(o);
-                      },
-                      onEdit: (o) {},
-                      onDelete: (o) {},
-                    ),
+            // --- PERBAIKAN: Selalu gunakan OrdersStreamWidget ---
+            // Firestore SDK akan secara otomatis menyajikan data dari cache saat offline.
+            child: OrdersStreamWidget(
+              status: viewModel.selectedStatus,
+              onStartDelivery: (o) async {
+                final e = await viewModel.onStartDelivery(o);
+                if (context.mounted) _handleApiError(context, e);
+              },
+              onCompleteDelivery: (o) async {
+                final e = await viewModel.onCompleteDelivery(o);
+                if (context.mounted) _handleApiError(context, e);
+              },
+              onEdit: (o) => _showAddOrderDialog(
+                context,
+                viewModel,
+                orderToEdit: o,
+              ),
+              onDelete: (o) =>
+                  _showDeleteConfirmDialog(context, viewModel, o),
             ),
           ),
         ],
       ),
-      CustomerBook(isOnline: viewModel.isOnline),
+      // --- PERBAIKAN: CustomerBook juga harus selalu online-first ---
+      const CustomerBook(isOnline: true),
       ProfileSection(
         user: viewModel.currentUser,
         onLogout: () => _showLogoutConfirmDialog(context, viewModel),

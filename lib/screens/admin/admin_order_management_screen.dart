@@ -75,9 +75,8 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
       _handleApiResponse('Pesanan tidak memiliki ID Firestore.', null);
       return;
     }
-    // --- PERBAIKAN: Gunakan transaksi lengkap untuk menyelesaikan pesanan ---
-    // Ini akan memperbarui status pesanan, stok, dan rekap penjualan harian.
-    final error = await _firestoreService.completeOrderTransaction(order);
+    // Gunakan metode batched yang baru, yang berfungsi baik online maupun offline.
+    final error = await _firestoreService.completeOrderBatched(order);
     if (mounted) _handleApiResponse(error, 'Pesanan berhasil diselesaikan dan rekap penjualan diperbarui.');
   }
 

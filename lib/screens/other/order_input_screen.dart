@@ -3,7 +3,7 @@
 import 'package:damiu/models/customer_model.dart';
 import 'package:damiu/models/order_model.dart';
 import 'package:damiu/services/auth_service.dart';
-import 'package:damiu/services/database_helper.dart';
+import 'package:damiu/services/firestore_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:collection/collection.dart';
@@ -24,7 +24,7 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
   final _phoneController = TextEditingController();
 
   bool _isLoading = false;
-  final DatabaseHelper _dbHelper = DatabaseHelper();
+  final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
   List<Customer> _allCustomers = [];
   Customer? _selectedCustomer; // Untuk melacak pelanggan yang dipilih dari autocomplete
@@ -39,7 +39,8 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
     setState(() {
       _isLoading = true;
     });
-    final customers = await _dbHelper.getAllCustomers();
+    // Ambil data pelanggan langsung dari Firestore
+    final customers = await _firestoreService.getAllCustomersOnce();
     if (mounted) {
       setState(() {
         _allCustomers = customers;
@@ -79,34 +80,8 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
       final address = _addressController.text.trim();
       final phoneNumber = _phoneController.text.trim();
 
-      // Cek apakah pelanggan sudah ada atau baru, berdasarkan nama
-      Customer? existingCustomer = _selectedCustomer != null && _selectedCustomer!.name.toLowerCase() == customerName.toLowerCase()
-          ? _selectedCustomer
-          : _allCustomers.firstWhereOrNull((c) => c.name.toLowerCase() == customerName.toLowerCase());
-
-      if (existingCustomer != null) {
-        // Pelanggan sudah ada, cek apakah ada perubahan data
-        if (existingCustomer.address != address || existingCustomer.phoneNumber != phoneNumber) {
-          final updatedCustomer = existingCustomer.copyWith(
-            address: address.isNotEmpty ? address : null,
-            phoneNumber: phoneNumber.isNotEmpty ? phoneNumber : null,
-            isSynced: false, // Tandai untuk disinkronkan
-          );
-          await _dbHelper.updateCustomer(updatedCustomer);
-        }
-      } else {
-        // Pelanggan baru, simpan ke database lokal
-        final newCustomer = Customer(
-          name: customerName,
-          address: address.isNotEmpty ? address : null,
-          phoneNumber: phoneNumber.isNotEmpty ? phoneNumber : null,
-          createdAt: DateTime.now(),
-          isSynced: false, // Tandai untuk disinkronkan
-        );
-        await _dbHelper.upsertCustomer(newCustomer);
-      }
-
-      // Buat objek pesanan untuk disimpan ke database lokal
+      // Buat objek pesanan untuk disimpan langsung ke Firestore.
+      // Logika upsert pelanggan sudah ditangani di dalam firestoreService.
       final newOrder = Order(
         customerName: customerName,
         gallonQuantity: int.parse(_gallonQuantityController.text),
@@ -116,21 +91,21 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
         status: OrderStatus.pending,
         createdAt: DateTime.now(),
         employeeUid: employeeUid,
-        isSynced: false, // Selalu false, karena akan disinkronkan oleh SyncService
+        isSynced: true, // Selalu true, Firestore yang akan menangani antrean offline
       );
 
       try {
-        // Simpan pesanan ke database lokal
-        await _dbHelper.insertOrder(newOrder);
+        // Simpan pesanan dan upsert pelanggan ke Firestore
+        await _firestoreService.addOrderAndUpsertCustomer(newOrder);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Pesanan berhasil disimpan di perangkat! Akan disinkronkan nanti.')),
+            const SnackBar(content: Text('Pesanan berhasil disimpan!')),
           );
           Navigator.pop(context, true); // Kirim sinyal bahwa ada perubahan
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menyimpan data lokal: $e')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menyimpan pesanan: $e')));
         }
       } finally {
         if (mounted) {

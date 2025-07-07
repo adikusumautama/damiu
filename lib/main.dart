@@ -9,6 +9,7 @@ import 'package:damiu/screens/home/karyawan_home_screen.dart';
 import 'package:damiu/screens/home/pelanggan_home_screen.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/firestore_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +21,9 @@ void main() {
     WidgetsFlutterBinding.ensureInitialized();
     await initializeDateFormatting('id_ID', null);
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    // Aktifkan Firestore persistence secara eksplisit.
+    FirebaseFirestore.instance.settings =
+        const Settings(persistenceEnabled: true);
     FlutterError.onError = (details) => debugPrint('Flutter Error: ${details.exceptionAsString()}');
     runApp(const MainApp());
   }, (error, stack) => debugPrint('Zoned Error: $error'));

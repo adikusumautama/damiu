@@ -176,26 +176,45 @@ class FirestoreService {
     }
   }
 
-  Future<String?> completeOrderTransaction(Order order) async {
+  /// Menyelesaikan pesanan menggunakan WriteBatch agar berfungsi online & offline.
+  /// Menggantikan runTransaction yang gagal saat offline.
+  Future<String?> completeOrderBatched(Order order) async {
     if (order.firestoreId == null) return "Order ID tidak ditemukan.";
+
     final orderRef = _db.collection('orders').doc(order.firestoreId!);
     final orderDate = order.createdAt ?? DateTime.now();
     final docId = DateFormat('yyyy-MM-dd').format(orderDate);
     final stockRef = _db.collection('daily_stock_levels').doc(docId);
     final saleRef = _db.collection('daily_sales').doc(docId);
+
     try {
-      await _db.runTransaction((transaction) async {
-        final stockSnapshot = await transaction.get(stockRef);
-        if (!stockSnapshot.exists) {
-          transaction.set(stockRef, {'initial_stock': 0, 'current_stock': 0, 'initial_empty_stock': 0, 'last_updated': Timestamp.now(), 'updated_by_uid': order.employeeUid ?? '-'}, SetOptions(merge: true));
-        }
-        transaction.update(orderRef, {'status': OrderStatus.delivered, 'deliveredAt': Timestamp.now()});
-        transaction.update(stockRef, {'current_stock': FieldValue.increment(-(order.gallonQuantity ?? 0)), 'last_updated': Timestamp.now()});
-        transaction.set(saleRef, {'quantity': FieldValue.increment(order.gallonQuantity ?? 0), 'delivery_count': FieldValue.increment(1), 'date': Timestamp.fromDate(orderDate), 'day_of_week': orderDate.weekday, 'last_updated_by': order.employeeUid}, SetOptions(merge: true));
+      WriteBatch batch = _db.batch();
+
+      // 1. Perbarui status pesanan menjadi 'Sudah Diantar'
+      batch.update(orderRef, {
+        'status': OrderStatus.delivered,
+        'deliveredAt': FieldValue.serverTimestamp(), // Gunakan waktu server
       });
+
+      // 2. Kurangi stok galon saat ini
+      batch.set(stockRef, {
+        'current_stock': FieldValue.increment(-(order.gallonQuantity ?? 0)),
+        'last_updated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // 3. Tambah/perbarui rekap penjualan harian
+      batch.set(saleRef, {
+        'quantity': FieldValue.increment(order.gallonQuantity ?? 0),
+        'delivery_count': FieldValue.increment(1),
+        'date': Timestamp.fromDate(orderDate),
+        'day_of_week': orderDate.weekday,
+        'last_updated_by': order.employeeUid
+      }, SetOptions(merge: true));
+
+      await batch.commit();
       return null;
     } catch (e) {
-      return 'Gagal menyelesaikan transaksi pesanan: ${e.toString()}';
+      return 'Gagal melakukan transaksi pesanan: ${e.toString()}';
     }
   }
 
