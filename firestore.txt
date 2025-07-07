@@ -23,8 +23,10 @@ service cloud.firestore {
 
     // Koleksi Log Galon Kembali (returned_gallons_log)
     match /returned_gallons_log/{logId} {
+      // Karyawan bisa membuat dan membaca log.
       allow read, create: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'karyawan';
-      allow read: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // Admin bisa membaca dan menghapus log.
+      allow read, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     // Koleksi Penjualan Harian (daily_sales)

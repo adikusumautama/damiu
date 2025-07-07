@@ -99,37 +99,71 @@ class _AdminReturnedGallonLogScreenState
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<ReturnedGallonLog>>(
-      stream: _firestoreService.getReturnedGallonLogsStream(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Center(child: Text('Belum ada data log galon kembali.'));
-        }
+    // Perubahan: Membungkus dengan Scaffold untuk memberikan struktur halaman yang lebih baik,
+    // termasuk AppBar dengan judul dan tombol aksi.
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Log Galon Kembali'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_sweep_outlined),
+            onPressed: _showDeleteAllConfirmDialog,
+            tooltip: 'Hapus Semua Log',
+          ),
+        ],
+      ),
+      body: StreamBuilder<List<ReturnedGallonLog>>(
+        stream: _firestoreService.getReturnedGallonLogsStream(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('Belum ada data log galon kembali.'));
+          }
 
-        final logs = snapshot.data!;
+          final logs = snapshot.data!;
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(8.0),
-          itemCount: logs.length,
-          itemBuilder: (context, index) {
-            final log = logs[index];
-            return Card(
-              child: ListTile(
-                leading: const CircleAvatar(child: Icon(Icons.inventory_2_outlined)),
-                title: Text('${log.quantity} Galon Kembali', style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Dicatat pada: ${DateFormat('EEEE, dd MMM yyyy - HH:mm', 'id_ID').format(log.createdAt)}'),
-                trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => _showDeleteConfirmDialog(log)),
-              ),
-            );
-          },
-        );
-      },
+          return ListView.builder(
+            padding: const EdgeInsets.all(8.0),
+            itemCount: logs.length,
+            itemBuilder: (context, index) {
+              final log = logs[index];
+              // Perubahan: Memperbaiki tampilan ListTile agar lebih informatif dan rapi.
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                    foregroundColor: Theme.of(context).primaryColor,
+                    child: const Icon(Icons.inventory_2_outlined),
+                  ),
+                  title: Text('${log.quantity} Galon Kembali', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Pada: ${DateFormat('EEEE, dd MMM yyyy - HH:mm', 'id_ID').format(log.createdAt)}'),
+                      FutureBuilder<String>(
+                        future: _getUserName(log.employeeUid),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Text('Oleh: Memuat...', style: TextStyle(fontSize: 12, color: Colors.grey));
+                          }
+                          return Text('Oleh: ${snapshot.data ?? 'Tidak diketahui'}', style: const TextStyle(fontSize: 12, color: Colors.grey));
+                        },
+                      ),
+                    ],
+                  ),
+                  trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => _showDeleteConfirmDialog(log)),
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
