@@ -23,7 +23,11 @@ class Order {
   final DateTime? createdAt;
   final DateTime? deliveredAt;
   final String? employeeUid;
-  final bool isSynced; // Penanda untuk sinkronisasi offline
+  // CATATAN: Penanda 'isSynced' manual seperti ini bisa menyesatkan.
+  // Saat offline, data akan ditandai 'isSynced = true' secara lokal padahal belum
+  // terkirim ke server. Cara yang lebih andal untuk memeriksa status sinkronisasi
+  // adalah dengan menggunakan 'snapshot.metadata.hasPendingWrites' pada listener stream Firestore.
+  final bool isSynced;
 
   Order({
     this.id,

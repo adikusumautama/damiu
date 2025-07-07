@@ -12,15 +12,27 @@ class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // --- FUNGSI CRUD PESANAN ---
+  /// Menambah pesanan baru dan membuat/memperbarui data pelanggan.
+  /// Fungsi ini dioptimalkan untuk mode offline.
+  /// PERHATIAN: Untuk menghindari read-before-write yang gagal saat offline,
+  /// fungsi ini tidak memeriksa apakah pelanggan sudah ada. Sebaliknya, ia menggunakan
+  /// `set` dengan `merge: true` pada dokumen pelanggan.
+  /// Ini mengharuskan ID dokumen pelanggan dapat diprediksi, jadi kita akan menggunakan
+  /// nama pelanggan sebagai ID. Ini berarti nama pelanggan harus unik.
   Future<String?> addOrderAndUpsertCustomer(Order order) async {
     try {
-      final querySnapshot = await _db.collection('customers').where('name', isEqualTo: order.customerName).limit(1).get();
       WriteBatch batch = _db.batch();
-      if (querySnapshot.docs.isEmpty && order.customerName != null && order.customerName!.isNotEmpty) {
-        final newCustomerRef = _db.collection('customers').doc();
-        final newCustomer = Customer(firestoreId: newCustomerRef.id, name: order.customerName!, address: order.address, phoneNumber: order.phoneNumber, createdAt: DateTime.now(), isSynced: true);
-        batch.set(newCustomerRef, newCustomer.toFirestore());
+
+      // Jika ada nama pelanggan, lakukan upsert (update/insert).
+      if (order.customerName != null && order.customerName!.trim().isNotEmpty) {
+        // Gunakan nama pelanggan sebagai ID dokumen untuk membuatnya idempotent.
+        // Ini menghindari perlunya query 'get' yang akan gagal saat offline.
+        final customerRef = _db.collection('customers').doc(order.customerName!.trim());
+        // Buat objek Customer baru untuk mendapatkan map data yang benar.
+        final customerToUpsert = Customer(name: order.customerName!.trim(), address: order.address, phoneNumber: order.phoneNumber, createdAt: DateTime.now());
+        batch.set(customerRef, customerToUpsert.toFirestore(), SetOptions(merge: true));
       }
+
       final newOrderRef = _db.collection('orders').doc();
       batch.set(newOrderRef, order.toMapForFirestore());
       await batch.commit();

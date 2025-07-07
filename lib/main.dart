@@ -61,10 +61,21 @@ class AuthWrapper extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
         if (snapshot.hasData && snapshot.data != null) {
           return FutureBuilder<UserModel?>(
-            future: AuthService().getUserModel(snapshot.data!.uid),
+            // --- PERBAIKAN UTAMA: Gunakan metode yang mendukung offline ---
+            // getActiveUserModel akan mencoba mengambil data dari jaringan,
+            // jika gagal (offline), ia akan mengambil dari cache lokal.
+            future: AuthService().getActiveUserModel(snapshot.data!.uid),
             builder: (context, userModelSnapshot) {
               if (userModelSnapshot.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-              if (userModelSnapshot.hasError || !userModelSnapshot.hasData || userModelSnapshot.data == null) return const AuthToggle();
+              
+              // Jika tidak ada data sama sekali (baik dari jaringan maupun cache),
+              // atau terjadi error yang tidak terduga, kembali ke halaman login.
+              if (!userModelSnapshot.hasData || userModelSnapshot.data == null) {
+                // Anda bisa menambahkan log di sini untuk debugging
+                print('AuthWrapper: Tidak dapat memuat data pengguna dari jaringan maupun cache. Kembali ke login.');
+                return const AuthToggle();
+              }
+
               switch (userModelSnapshot.data!.role) {
                 case 'admin': return const AdminHomeScreen();
                 case 'karyawan': return const KaryawanHomeScreen();
