@@ -99,7 +99,7 @@ class KaryawanHomeViewModel extends ChangeNotifier {
     _isOnline = currentlyOnline;
     if (hasListeners) {
       _snackBarMessage = _isOnline
-          ? 'Anda kembali online. Semua data akan disinkronkan secara otomatis.'
+          ? 'Semua data akan disinkronkan secara otomatis.'
           : 'Anda sekarang offline. Perubahan akan disimpan di perangkat.';
       _snackBarColor = _isOnline ? Colors.green : Colors.orange[800];
     }
