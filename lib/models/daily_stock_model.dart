@@ -7,6 +7,7 @@ class DailyStock {
   final int initialStock;
   final int initialEmptyStock;
   final int currentStock;
+  final int totalSold; // <-- Tambahkan field ini
   final DateTime lastUpdated;
   final String updatedByUid;
 
@@ -15,6 +16,7 @@ class DailyStock {
     required this.initialStock,
     required this.initialEmptyStock,
     required this.currentStock,
+    required this.totalSold,
     required this.lastUpdated,
     required this.updatedByUid,
   });
@@ -25,6 +27,7 @@ class DailyStock {
     int? initialStock,
     int? initialEmptyStock,
     int? currentStock,
+    int? totalSold,
     DateTime? lastUpdated,
     String? updatedByUid,
   }) {
@@ -33,6 +36,7 @@ class DailyStock {
       initialStock: initialStock ?? this.initialStock,
       initialEmptyStock: initialEmptyStock ?? this.initialEmptyStock,
       currentStock: currentStock ?? this.currentStock,
+      totalSold: totalSold ?? this.totalSold,
       lastUpdated: lastUpdated ?? this.lastUpdated,
       updatedByUid: updatedByUid ?? this.updatedByUid,
     );
@@ -49,6 +53,7 @@ class DailyStock {
       initialStock: (map['initial_stock'] as num?)?.toInt() ?? 0,
       initialEmptyStock: (map['initial_empty_stock'] as num?)?.toInt() ?? 0,
       currentStock: (map['current_stock'] as num?)?.toInt() ?? 0,
+      totalSold: (map['total_sold'] as num?)?.toInt() ?? 0, // <-- Baca dari map
       // Menangani Timestamp dari Firestore atau String dari sumber lain
       lastUpdated: map['last_updated'] is Timestamp
           ? (map['last_updated'] as Timestamp).toDate()
@@ -65,6 +70,7 @@ class DailyStock {
       'initial_stock': initialStock,
       'initial_empty_stock': initialEmptyStock,
       'current_stock': currentStock,
+      'total_sold': totalSold, // <-- Simpan ke Firestore
       'last_updated': Timestamp.fromDate(lastUpdated),
       'updated_by_uid': updatedByUid,
     };

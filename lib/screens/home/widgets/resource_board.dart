@@ -23,7 +23,8 @@ class ResourceBoard extends StatelessWidget {
               children: [
                 _buildStockInfo('Galon Tersedia', Icons.local_drink, Colors.blue, (stock) => stock.currentStock),
                 _buildStockInfo('Galon Kosong', Icons.hourglass_empty, Colors.orange, (stock) => stock.initialEmptyStock),
-                _buildStockInfo('Total Terjual', Icons.point_of_sale, Colors.green, (stock) => stock.initialStock - stock.currentStock),
+                // PERUBAHAN: Menggunakan field `totalSold` yang baru
+                _buildStockInfo('Total Terjual', Icons.point_of_sale, Colors.green, (stock) => stock.totalSold),
               ],
             ),
             const Divider(height: 20, thickness: 1),

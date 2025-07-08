@@ -109,9 +109,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         final int inDeliveryOrdersCount = orders.where((o) => o.status == OrderStatus.inDelivery).length;
 
         final int currentStock = stock?.currentStock ?? 0;
-        final int initialStock = stock?.initialStock ?? 0;
         final int emptyStock = stock?.initialEmptyStock ?? 0;
-        final int soldStock = initialStock - currentStock;
+        // PERUBAHAN: Ambil data terjual dari field baru, bukan dari perhitungan.
+        final int soldStock = stock?.totalSold ?? 0;
 
         // --- PERUBAHAN: Menggunakan list data untuk kartu ringkasan ---
         final List<Map<String, dynamic>> summaryData = [
@@ -121,6 +121,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           {'title': 'Sedang Diantar', 'value': '$inDeliveryOrdersCount', 'icon': Icons.delivery_dining_outlined, 'color': Colors.purple},
           {'title': 'Galon Tersedia', 'value': '$currentStock', 'icon': Icons.inventory, 'color': Colors.teal},
           {'title': 'Total Terjual', 'value': '$soldStock', 'icon': Icons.point_of_sale, 'color': Colors.pink},
+          {'title': 'Galon Kosong', 'value': '$emptyStock', 'icon': Icons.hourglass_empty_outlined, 'color': Colors.orange},
         ];
 
         return RefreshIndicator(

@@ -246,6 +246,8 @@ class FirestoreService {
       // 2. Kurangi stok galon saat ini
       batch.set(stockRef, {
         'current_stock': FieldValue.increment(-(order.gallonQuantity ?? 0)),
+        // PERUBAHAN: Tambah jumlah terjual secara eksplisit
+        'total_sold': FieldValue.increment(order.gallonQuantity ?? 0),
         'last_updated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
@@ -296,8 +298,15 @@ class FirestoreService {
   Future<String?> setInitialStock({required DateTime date, required int filledStock, required String updatedByUid}) async {
     try {
       String docId = DateFormat('yyyy-MM-dd').format(date);
-      // Menambahkan initial_empty_stock: 0 untuk konsistensi data
-      await _db.collection('daily_stock_levels').doc(docId).set({'initial_stock': filledStock, 'current_stock': filledStock, 'initial_empty_stock': 0, 'last_updated': Timestamp.now(), 'updated_by_uid': updatedByUid}, SetOptions(merge: true));
+      // PERUBAHAN: Inisialisasi total_sold menjadi 0 saat stok awal diatur.
+      await _db.collection('daily_stock_levels').doc(docId).set({
+        'initial_stock': filledStock,
+        'current_stock': filledStock,
+        'initial_empty_stock': 0,
+        'total_sold': 0,
+        'last_updated': Timestamp.now(),
+        'updated_by_uid': updatedByUid
+      }, SetOptions(merge: true));
       return null;
     } catch (e) {
       return e.toString();
@@ -310,12 +319,10 @@ class FirestoreService {
     try {
       // --- PERBAIKAN KRITIS UNTUK OFFLINE ---
       // Menggunakan `set` dengan `merge: true` agar aman saat offline.
-      // Logika di bawah ini (menambah initial_stock) sudah sesuai dengan kode asli Anda.
+      // PERUBAHAN: Logika ini tidak lagi mengubah `initial_stock`.
       await docRef.set({
         // Tambah ke stok tersedia (karena langsung diisi ulang)
         'current_stock': FieldValue.increment(quantity),
-        // Tambah ke stok awal (agar 'Total Terjual' tidak berkurang)
-        'initial_stock': FieldValue.increment(quantity),
         'initial_empty_stock': FieldValue.increment(quantity),
         'last_updated': FieldValue.serverTimestamp(),
         'updated_by_uid': updatedByUid
