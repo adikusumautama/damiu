@@ -115,7 +115,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
         // --- PERUBAHAN: Menggunakan list data untuk kartu ringkasan ---
         final List<Map<String, dynamic>> summaryData = [
-          {'title': 'Total Pesanan Hari Ini', 'value': '$totalOrdersToday', 'icon': Icons.shopping_cart_outlined, 'color': Colors.blue},
+          {'title': 'Total Pesanan', 'value': '$totalOrdersToday', 'icon': Icons.shopping_cart_outlined, 'color': Colors.blue},
           {'title': 'Pesanan Selesai', 'value': '$deliveredOrdersCount', 'icon': Icons.check_circle_outline, 'color': Colors.green},
           {'title': 'Menunggu Diantar', 'value': '$pendingOrdersCount', 'icon': Icons.pending_actions_outlined, 'color': Colors.orange},
           {'title': 'Sedang Diantar', 'value': '$inDeliveryOrdersCount', 'icon': Icons.delivery_dining_outlined, 'color': Colors.purple},
