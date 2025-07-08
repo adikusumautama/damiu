@@ -1,8 +1,6 @@
 // lib/screens/home/widgets/resource_board.dart
 import 'package:flutter/material.dart';
-import 'package:damiu/services/firestore_service.dart';
 import 'package:damiu/models/daily_stock_model.dart';
-import 'package:damiu/screens/other/empty_gallon_input_screen.dart';
 
 class ResourceBoard extends StatelessWidget {
   final DailyStock? stock;
@@ -27,13 +25,6 @@ class ResourceBoard extends StatelessWidget {
                 _buildStockInfo('Total Terjual', Icons.point_of_sale, Colors.green, (stock) => stock.totalSold),
               ],
             ),
-            const Divider(height: 20, thickness: 1),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildActionButton(context, 'Input Galon Kosong', Icons.add_shopping_cart, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmptyGallonInputScreen()))),
-              ],
-            )
           ],
         ),
       ),
@@ -51,18 +42,6 @@ class ResourceBoard extends StatelessWidget {
           stock == null ? '0' : getValue(stock!).toString(),
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
       ],
-    );
-  }
-
-  Widget _buildActionButton(BuildContext context, String title, IconData icon, VoidCallback onPressed) {
-    return ElevatedButton.icon(
-      icon: Icon(icon, size: 16),
-      label: Text(title, style: const TextStyle(fontSize: 10)),
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
     );
   }
 }
