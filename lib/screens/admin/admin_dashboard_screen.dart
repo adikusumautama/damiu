@@ -213,7 +213,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Fitur Unggulan ✨', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo)),
+                const Text('Informasi Prediksi', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo)),
                 const SizedBox(height: 10),
                 content, // Tampilkan konten (loading, error, atau data)
                 const SizedBox(height: 10),
