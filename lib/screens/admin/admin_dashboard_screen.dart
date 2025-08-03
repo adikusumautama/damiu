@@ -145,6 +145,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     )
                   ],
                 ),
+                
+                const SizedBox(height: 24),
+                _buildPredictionCard(),
+
                 const SizedBox(height: 16),
                 GridView.builder(
                   shrinkWrap: true,
@@ -166,8 +170,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     );
                   },
                 ),
-                const SizedBox(height: 24),
-                _buildPredictionCard(),
+                
               ],
             ),
           ),
@@ -209,7 +212,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
               );
             }
-
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

@@ -3,7 +3,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-
 class PredictionChartWidget extends StatelessWidget {
   final List<DailySale> historicalSales;
   final List<double> predictedQuantities;
@@ -34,10 +33,11 @@ class PredictionChartWidget extends StatelessWidget {
       historicalSpots.add(FlSpot(dayIndex, sale.quantity.toDouble()));
     }
 
-    final double lastHistoricalDayIndex =
-        historicalSales.last.date.difference(startDate).inDays.toDouble();
+    final double lastHistoricalDayIndex = historicalSales.last.date
+        .difference(startDate)
+        .inDays
+        .toDouble();
 
-    
     // Buat FlSpot untuk prediksi berdasarkan predictedQuantities dari API
     if (predictedQuantities.isNotEmpty) {
       for (int i = 1; i <= daysToPredict; i++) {
@@ -51,7 +51,9 @@ class PredictionChartWidget extends StatelessWidget {
     }
 
     // --- PERBAIKAN: Sambungkan garis historis dan prediksi ---
-    final List<FlSpot> connectedPredictedSpots = predictedSpots.isNotEmpty ? [historicalSpots.last, ...predictedSpots] : [];
+    final List<FlSpot> connectedPredictedSpots = predictedSpots.isNotEmpty
+        ? [historicalSpots.last, ...predictedSpots]
+        : [];
 
     final double totalChartDays = lastHistoricalDayIndex + daysToPredict;
 
@@ -71,7 +73,8 @@ class PredictionChartWidget extends StatelessWidget {
     const double rightPadding = 20;
     const double minSpacePerDayUnit = 25.0;
 
-    final double effectiveMaxX = totalChartDays == 0 && historicalSpots.length == 1 ? 1 : totalChartDays;
+    final double effectiveMaxX =
+        totalChartDays == 0 && historicalSpots.length == 1 ? 1 : totalChartDays;
     final double calculatedChartWidth =
         (effectiveMaxX * minSpacePerDayUnit) + leftReservedSpace + rightPadding;
 
@@ -81,17 +84,17 @@ class PredictionChartWidget extends StatelessWidget {
           scrollDirection: Axis.horizontal,
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              minWidth: calculatedChartWidth > constraints.maxWidth ? calculatedChartWidth : constraints.maxWidth, // jangan lebih kecil dari lebar layar
-              maxWidth: calculatedChartWidth > constraints.maxWidth ? calculatedChartWidth : constraints.maxWidth, // panjang berdasarkan jumlah data
+              minWidth: calculatedChartWidth > constraints.maxWidth
+                  ? calculatedChartWidth
+                  : constraints.maxWidth, // jangan lebih kecil dari lebar layar
+              maxWidth: calculatedChartWidth > constraints.maxWidth
+                  ? calculatedChartWidth
+                  : constraints.maxWidth, // panjang berdasarkan jumlah data
             ),
             child: SizedBox(
               height: 350,
               child: Container(
-                padding: const EdgeInsets.only(
-                  top: 24,
-                  right: 24,
-                  bottom: 12,
-                ),
+                padding: const EdgeInsets.only(top: 24, right: 24, bottom: 12),
                 child: LineChart(
                   LineChartData(
                     minX: 0,
@@ -141,7 +144,9 @@ class PredictionChartWidget extends StatelessWidget {
                           interval: bottomTitleInterval,
                           getTitlesWidget: (value, meta) {
                             if (value > effectiveMaxX) return Container();
-                            final date = startDate.add(Duration(days: value.toInt()));
+                            final date = startDate.add(
+                              Duration(days: value.toInt()),
+                            );
                             return SideTitleWidget(
                               axisSide: meta.axisSide,
                               space: 4,
@@ -176,7 +181,12 @@ class PredictionChartWidget extends StatelessWidget {
                         dotData: FlDotData(
                           show: historicalSpots.length < 100,
                           getDotPainter: (spot, percent, barData, index) =>
-                              FlDotCirclePainter(radius: 4, color: Colors.blue, strokeWidth: 1.5, strokeColor: Colors.white),
+                              FlDotCirclePainter(
+                                radius: 4,
+                                color: Colors.blue,
+                                strokeWidth: 1.5,
+                                strokeColor: Colors.white,
+                              ),
                         ),
                         belowBarData: BarAreaData(
                           show: true,
@@ -195,7 +205,10 @@ class PredictionChartWidget extends StatelessWidget {
                           spots: connectedPredictedSpots,
                           isCurved: true,
                           gradient: LinearGradient(
-                            colors: [Colors.deepPurple.shade500, Colors.deepPurple.shade300],
+                            colors: [
+                              Colors.deepPurple.shade500,
+                              Colors.deepPurple.shade300,
+                            ],
                           ),
                           barWidth: 4,
                           dashArray: [8, 6],
@@ -215,32 +228,51 @@ class PredictionChartWidget extends StatelessWidget {
                     ],
                     lineTouchData: LineTouchData(
                       handleBuiltInTouches: true,
-                      touchTooltipData: LineTouchTooltipData( // --- PERBAIKAN: Tooltip yang lebih baik ---
+                      touchTooltipData: LineTouchTooltipData(
+                        // --- PERBAIKAN: Tooltip yang lebih baik ---
                         tooltipBgColor: Colors.black.withOpacity(0.8),
                         tooltipRoundedRadius: 8,
                         getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
                           return touchedBarSpots.map((barSpot) {
                             final flSpot = barSpot;
-                            final date = startDate.add(Duration(days: flSpot.x.toInt()));
-                            final formattedDate = DateFormat('EEEE, dd MMM yyyy', 'id_ID').format(date);
+                            final date = startDate.add(
+                              Duration(days: flSpot.x.toInt()),
+                            );
+                            final formattedDate = DateFormat(
+                              'EEEE, dd MMM yyyy',
+                              'id_ID',
+                            ).format(date);
                             String seriesName = '';
                             TextStyle seriesTextStyle;
 
                             if (barSpot.barIndex == 0) {
                               seriesName = 'Historis';
-                              seriesTextStyle = const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 14);
+                              seriesTextStyle = const TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              );
                             } else if (barSpot.barIndex == 1) {
                               seriesName = 'Prediksi';
-                              seriesTextStyle = const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold, fontSize: 14);
+                              seriesTextStyle = const TextStyle(
+                                color: Colors.deepPurple,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              );
                             } else {
                               seriesName = 'Data';
-                              seriesTextStyle = const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 14);
+                              seriesTextStyle = const TextStyle(
+                                color: Colors.grey,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              );
                             }
 
                             final displayY = flSpot.y < 0 ? 0 : flSpot.y;
 
                             // Jangan tampilkan tooltip untuk titik sambungan
-                            if (barSpot.barIndex == 1 && flSpot.x == lastHistoricalDayIndex) {
+                            if (barSpot.barIndex == 1 &&
+                                flSpot.x == lastHistoricalDayIndex) {
                               return null;
                             }
 
@@ -250,11 +282,14 @@ class PredictionChartWidget extends StatelessWidget {
                               children: [
                                 TextSpan(
                                   text: '${displayY.toStringAsFixed(0)} Galon',
-                                  style: seriesTextStyle.copyWith(fontSize: 12, fontWeight: FontWeight.normal),
+                                  style: seriesTextStyle.copyWith(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.normal,
+                                  ),
                                 ),
                                 const TextSpan(text: '\n'),
                                 TextSpan(
-                                  text: formattedDate, 
+                                  text: formattedDate,
                                   style: const TextStyle(
                                     color: Colors.white70,
                                     fontSize: 11,
@@ -278,7 +313,6 @@ class PredictionChartWidget extends StatelessWidget {
   }
 }
 
-
 // --- PERBAIKAN: Widget legenda yang lebih baik ---
 class ChartLegend extends StatelessWidget {
   const ChartLegend({super.key});
@@ -288,9 +322,17 @@ class ChartLegend extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _LegendItem(color: Colors.blue.shade500, text: 'Historis', isDashed: false),
+        _LegendItem(
+          color: Colors.blue.shade500,
+          text: 'Historis',
+          isDashed: false,
+        ),
         const SizedBox(width: 24),
-        _LegendItem(color: Colors.deepPurple.shade400, text: 'Prediksi', isDashed: true),
+        _LegendItem(
+          color: Colors.deepPurple.shade400,
+          text: 'Prediksi',
+          isDashed: true,
+        ),
       ],
     );
   }
@@ -301,7 +343,11 @@ class _LegendItem extends StatelessWidget {
   final String text;
   final bool isDashed;
 
-  const _LegendItem({required this.color, required this.text, this.isDashed = false});
+  const _LegendItem({
+    required this.color,
+    required this.text,
+    this.isDashed = false,
+  });
 
   @override
   Widget build(BuildContext context) {

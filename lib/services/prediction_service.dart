@@ -9,7 +9,11 @@ class PredictionService {
   // Gunakan IP ini jika menjalankan Flutter di Emulator Android dan Flask di PC yang sama
   // final String _apiBaseUrl = 'http://10.0.2.2:5000/predict';
   // Gunakan IP lokal PC Anda jika menjalankan Flutter di HP pada WiFi yang sama (ganti dengan IP Anda)
-  final String _apiBaseUrl = 'http://192.168.100.72:5000/predict'; // GANTI DENGAN IP LOKAL PC ANDA
+  // final String _apiBaseUrl = 'http://192.168.100.72:5000/predict'; // GANTI DENGAN IP LOKAL PC ANDA
+  final String _apiBaseUrl = 'http://10.5.50.129:5000/predict'; // GANTI DENGAN IP LOKAL PC ANDA
+  // final String _apiBaseUrl = 'http://192.16.4.196:5000/predict'; 
+
+
 
   // Fungsi untuk mendapatkan prediksi dari API
   // `daysToPredict` adalah berapa hari ke depan yang ingin diprediksi
