@@ -8,7 +8,7 @@ class PelangganHomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pelanggan Area'),
+        title: const Text('Default'),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -19,7 +19,7 @@ class PelangganHomeScreen extends StatelessWidget {
         ],
       ),
       body: const Center(
-        child: Text('Selamat datang, Pelanggan!'),
+        child: Text('Default'),
       ),
     );
   }

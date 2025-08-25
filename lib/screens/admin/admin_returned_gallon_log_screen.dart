@@ -99,8 +99,6 @@ class _AdminReturnedGallonLogScreenState
 
   @override
   Widget build(BuildContext context) {
-    // Perubahan: Membungkus dengan Scaffold untuk memberikan struktur halaman yang lebih baik,
-    // termasuk AppBar dengan judul dan tombol aksi.
     return Scaffold(
       appBar: AppBar(
         title: const Text('Log Galon Kembali'),
@@ -132,7 +130,6 @@ class _AdminReturnedGallonLogScreenState
             itemCount: logs.length,
             itemBuilder: (context, index) {
               final log = logs[index];
-              // Perubahan: Memperbaiki tampilan ListTile agar lebih informatif dan rapi.
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
                 child: ListTile(

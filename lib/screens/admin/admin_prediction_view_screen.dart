@@ -1,4 +1,3 @@
-// lib/screens/admin/admin_prediction_view_screen.dart
 import 'package:damiu/services/firestore_service.dart';
 import 'package:damiu/models/daily_sale_model.dart';
 import 'package:damiu/models/prediction_result_model.dart';

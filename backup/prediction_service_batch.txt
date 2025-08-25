@@ -1,0 +1,46 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:damiu/models/prediction_result_model.dart';
+
+class PredictionService {
+  final List<String> _apiBaseUrls = [
+    'http://172.31.72.98:5000/predict'
+    'http://10.5.50.129:5000/predict',       // URL lokal (misal jaringan LAN dev)
+    'http://192.168.100.72:5000/predict',     // URL backup / production
+    'http://192.16.4.196:5000/predict',
+  ];
+
+  Future<ApiPredictionResult> getPredictionsFromApi({String dataSource = 'firestore'}) async {
+    final requestBody = jsonEncode({'data_source': dataSource});
+
+    for (final url in _apiBaseUrls) {
+      try {
+        final response = await http.post(
+          Uri.parse(url),
+          headers: {'Content-Type': 'application/json'},
+          body: requestBody,
+        );
+
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> data = jsonDecode(response.body);
+          return ApiPredictionResult.fromJson(data);
+        } else {
+          final Map<String, dynamic> errorData = jsonDecode(response.body);
+          return ApiPredictionResult(
+            success: false,
+            errorMessage: errorData['error'] ?? 'Unknown API error (Status: ${response.statusCode})',
+          );
+        }
+      } catch (e) {
+        // Gagal koneksi ke URL ini, lanjut coba URL berikutnya
+        print('Gagal koneksi ke $url: $e');
+      }
+    }
+
+    // Kalau semua URL gagal
+    return ApiPredictionResult(
+      success: false,
+      errorMessage: 'Gagal menghubungi semua server API.',
+    );
+  }
+}

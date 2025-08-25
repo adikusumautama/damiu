@@ -44,7 +44,6 @@ class _AdminFirestoreDataWidgetState
         false;
 
     if (confirm && mounted) {
-      // --- PEMANGGILAN FUNGSI YANG BENAR ---
       String? error = await _firestoreService.deleteDailySale(firestoreId);
       if (mounted) {
         if (error == null) {
@@ -196,7 +195,6 @@ class _AdminFirestoreDataWidgetState
                                   Text(DateFormat('EEEE', 'id_ID').format(sale.date)),
                                 ),
                                 DataCell(Text(sale.quantity.toString())),
-                                // DataCell(Text(sale.deliveryCount.toString())),
                                 DataCell(
                                   IconButton(
                                     icon: const Icon(Icons.delete, color: Colors.red),

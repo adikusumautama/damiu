@@ -27,25 +27,15 @@ class AuthService {
     }
   }
 
-  /// --- FUNGSI BARU UNTUK MENDAPATKAN USER MODEL DENGAN FALLBACK OFFLINE ---
-  /// Metode ini adalah kunci untuk mengatasi masalah loading saat offline.
-  /// 1. Mencoba mengambil data pengguna dari Firestore (jaringan).
-  /// 2. Jika berhasil, simpan data tersebut ke cache lokal (SharedPreferences) untuk penggunaan di masa depan.
-  /// 3. Jika gagal (misalnya, tidak ada koneksi internet), ia akan mencoba mengambil data dari cache lokal.
-  /// 4. Jika data ada di cache, aplikasi bisa lanjut berjalan dengan data terakhir yang diketahui.
-  /// 5. Jika gagal di kedua tempat, kembalikan null.
   Future<UserModel?> getActiveUserModel(String uid) async {
     try {
-      // Coba ambil dari jaringan terlebih dahulu
       final userModel = await getUserModel(uid);
       if (userModel != null) {
-        // Jika berhasil, simpan ke cache lokal untuk penggunaan offline nanti
         await _localDataService.saveUser(userModel);
         return userModel;
       }
       return await _localDataService.getUser();
     } catch (e) {
-      // Jika terjadi error (kemungkinan besar karena offline), ambil dari cache
       print('Gagal mengambil data dari Firestore, mencoba dari cache lokal. Error: $e');
       return await _localDataService.getUser();
     }
@@ -56,23 +46,22 @@ class AuthService {
     required String email,
     required String password,
     required String name,
-    // required String role, // Dihapus, akan di-set default
     String? phoneNumber,
     String? address,
   }) async {
-    const String defaultRole = "pelanggan"; // Peran default untuk pengguna baru
+    const String defaultRole = "pelanggan";
     try {
       UserCredential userCredential = await _auth
           .createUserWithEmailAndPassword(email: email, password: password);
       User? user = userCredential.user;
 
       if (user != null) {
-        // Simpan informasi tambahan ke Firestore
+        // Simpan informasi ke Firestore
         UserModel newUser = UserModel(
           uid: user.uid,
           email: email,
           name: name,
-          role: defaultRole, // Menggunakan peran default
+          role: defaultRole, 
           phoneNumber: phoneNumber,
           address: address,
         );
@@ -80,9 +69,9 @@ class AuthService {
             .collection('users')
             .doc(user.uid)
             .set(newUser.toMap());
-        return null; // Sukses, tidak ada pesan error
+        return null; 
       }
-      return "Gagal membuat pengguna."; // Seharusnya tidak terjadi jika userCredential berhasil
+      return "Gagal membuat pengguna."; 
     } on FirebaseAuthException catch (e) {
       if (e.code == 'weak-password') {
         return 'Password yang diberikan terlalu lemah.';

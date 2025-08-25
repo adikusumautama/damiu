@@ -1,9 +1,8 @@
-// lib/models/daily_sync_metadata_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 class DailySyncMetadataModel {
-  final String id; // Document ID from Firestore (YYYY-MM-DD)
+  final String id; 
   final DateTime date;
   final int deliveryCount;
   final String? lastSyncedByUid;
@@ -21,10 +20,8 @@ class DailySyncMetadataModel {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     DateTime parsedDate;
     try {
-      // ID dokumen adalah tanggal YYYY-MM-DD
       parsedDate = DateFormat('yyyy-MM-dd').parse(doc.id);
     } catch (e) {
-      // Fallback jika parsing ID gagal, gunakan field 'date' jika ada
       parsedDate = (data['date'] as Timestamp?)?.toDate() ?? DateTime.now();
       print("Warning: Could not parse date from doc.id '${doc.id}', using fallback. Error: $e");
     }
@@ -40,8 +37,6 @@ class DailySyncMetadataModel {
 
   Map<String, dynamic> toFirestore() {
     return {
-      // 'date' tidak perlu ditulis ulang jika ID adalah tanggal,
-      // tapi bisa disertakan untuk konsistensi atau query
       'date': Timestamp.fromDate(date),
       'delivery_count': deliveryCount,
       'last_synced_by_uid': lastSyncedByUid,

@@ -1,10 +1,5 @@
-// lib/models/order_model.dart
-
-// --- PERBAIKAN: Mengganti titik dengan titik dua ---
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Kelas helper untuk menyimpan konstanta status pesanan.
-/// Mencegah kesalahan ketik dan membuat kode lebih mudah dibaca.
 class OrderStatus {
   static const String pending = 'Belum Diantar';
   static const String inDelivery = 'Sedang Diantar';
@@ -12,8 +7,8 @@ class OrderStatus {
 }
 
 class Order {
-  final int? id; // Kunci utama untuk database lokal (SQLite)
-  final String? firestoreId; // ID unik dari dokumen di Firestore
+  final int? id; 
+  final String? firestoreId; 
   final String? customerName;
   final int? gallonQuantity;
   final String? otherItems;
@@ -23,10 +18,6 @@ class Order {
   final DateTime? createdAt;
   final DateTime? deliveredAt;
   final String? employeeUid;
-  // CATATAN: Penanda 'isSynced' manual seperti ini bisa menyesatkan.
-  // Saat offline, data akan ditandai 'isSynced = true' secara lokal padahal belum
-  // terkirim ke server. Cara yang lebih andal untuk memeriksa status sinkronisasi
-  // adalah dengan menggunakan 'snapshot.metadata.hasPendingWrites' pada listener stream Firestore.
   final bool isSynced;
 
   Order({
@@ -44,7 +35,6 @@ class Order {
     this.isSynced = false,
   });
 
-  /// Konversi objek Order ke Map untuk disimpan di database lokal (SQLite).
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -62,7 +52,6 @@ class Order {
     };
   }
 
-  /// Membuat objek Order dari Map yang berasal dari database lokal (SQLite).
   factory Order.fromMap(Map<String, dynamic> map) {
     return Order(
       id: map['id'] as int?,
@@ -80,7 +69,6 @@ class Order {
     );
   }
 
-  /// Konversi objek Order ke Map untuk disimpan di Firestore.
   Map<String, dynamic> toMapForFirestore() {
     return {
       'customerName': customerName ?? 'Tanpa Nama',
@@ -95,7 +83,6 @@ class Order {
     };
   }
 
-  /// Membuat objek Order dari data snapshot Firestore.
   factory Order.fromFirestore(Map<String, dynamic> data, String documentId) {
     return Order(
       firestoreId: documentId,

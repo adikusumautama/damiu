@@ -38,7 +38,6 @@ class PredictionChartWidget extends StatelessWidget {
         .inDays
         .toDouble();
 
-    // Buat FlSpot untuk prediksi berdasarkan predictedQuantities dari API
     if (predictedQuantities.isNotEmpty) {
       for (int i = 1; i <= daysToPredict; i++) {
         final double dayIndexRelativeToStart = lastHistoricalDayIndex + i;
@@ -50,7 +49,7 @@ class PredictionChartWidget extends StatelessWidget {
       }
     }
 
-    // --- PERBAIKAN: Sambungkan garis historis dan prediksi ---
+    // --- Sambungan garis historis dan prediksi ---
     final List<FlSpot> connectedPredictedSpots = predictedSpots.isNotEmpty
         ? [historicalSpots.last, ...predictedSpots]
         : [];
@@ -86,10 +85,10 @@ class PredictionChartWidget extends StatelessWidget {
             constraints: BoxConstraints(
               minWidth: calculatedChartWidth > constraints.maxWidth
                   ? calculatedChartWidth
-                  : constraints.maxWidth, // jangan lebih kecil dari lebar layar
+                  : constraints.maxWidth, 
               maxWidth: calculatedChartWidth > constraints.maxWidth
                   ? calculatedChartWidth
-                  : constraints.maxWidth, // panjang berdasarkan jumlah data
+                  : constraints.maxWidth, 
             ),
             child: SizedBox(
               height: 350,
@@ -229,7 +228,6 @@ class PredictionChartWidget extends StatelessWidget {
                     lineTouchData: LineTouchData(
                       handleBuiltInTouches: true,
                       touchTooltipData: LineTouchTooltipData(
-                        // --- PERBAIKAN: Tooltip yang lebih baik ---
                         tooltipBgColor: Colors.black.withOpacity(0.8),
                         tooltipRoundedRadius: 8,
                         getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
@@ -270,7 +268,6 @@ class PredictionChartWidget extends StatelessWidget {
 
                             final displayY = flSpot.y < 0 ? 0 : flSpot.y;
 
-                            // Jangan tampilkan tooltip untuk titik sambungan
                             if (barSpot.barIndex == 1 &&
                                 flSpot.x == lastHistoricalDayIndex) {
                               return null;
@@ -313,7 +310,7 @@ class PredictionChartWidget extends StatelessWidget {
   }
 }
 
-// --- PERBAIKAN: Widget legenda yang lebih baik ---
+// Garis-garis
 class ChartLegend extends StatelessWidget {
   const ChartLegend({super.key});
 
@@ -360,9 +357,7 @@ class _LegendItem extends StatelessWidget {
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(2),
-            // Jika ingin menampilkan garis putus-putus di legenda,
-            // bisa menggunakan CustomPaint atau package `dotted_line`.
-            // Untuk kesederhanaan, kita gunakan warna solid saja.
+
           ),
         ),
         const SizedBox(width: 8),

@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class DailySale {
   final int? id;
-  final String? firestoreId; // Ini yang akan kita isi
+  final String? firestoreId;
   final DateTime date;
   final int dayOfWeek; 
   final int deliveryCount;
@@ -36,7 +36,6 @@ class DailySale {
     };
   }
 
-  // --- PERBAIKAN: Factory sekarang menerima ID dokumen ---
   factory DailySale.fromMap(Map<String, dynamic> map, [String? docId]) {
     DateTime saleDate;
     
@@ -50,7 +49,7 @@ class DailySale {
 
     return DailySale(
       id: map['id'] as int?,
-      // Jika docId tersedia, gunakan itu. Jika tidak, coba dari map.
+      // Jika docId tersedia, gunakan itu
       firestoreId: docId ?? map['firestore_id'] as String?,
       date: saleDate,
       dayOfWeek: map['day_of_week'] as int? ?? saleDate.weekday,

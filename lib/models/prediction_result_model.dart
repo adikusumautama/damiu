@@ -1,9 +1,9 @@
-import 'package:intl/intl.dart'; // Import DateFormat
+import 'package:intl/intl.dart'; 
 
 class SingleDayPrediction {
   final DateTime date;
   final int predictedQuantity;
-  final List<double>? confidenceRange; // Optional confidence range
+  final List<double>? confidenceRange; 
 
   SingleDayPrediction({
     required this.date,
@@ -12,12 +12,10 @@ class SingleDayPrediction {
   });
 
   factory SingleDayPrediction.fromJson(Map<String, dynamic> json) {
-    // Pastikan parsing tanggal menggunakan format yang benar dari API
-    // API mengembalikan "YYYY-MM-DD"
     final DateFormat formatter = DateFormat('yyyy-MM-dd');
     return SingleDayPrediction(
       date: formatter.parse(json['Tanggal']),
-      predictedQuantity: (json['Prediksi Galon'] as num).round(), // API returns double, round it
+      predictedQuantity: (json['Prediksi Galon'] as num).round(), 
       confidenceRange: json['Confidence Range'] != null
           ? List<double>.from(json['Confidence Range'])
           : null,
@@ -39,7 +37,6 @@ class ApiPredictionResult {
   });
 
   factory ApiPredictionResult.fromJson(Map<String, dynamic> json) {
-    // Handle the new structure for success
     if (json.containsKey('prediction_for_next_day')) {
       return ApiPredictionResult(
         lastKnownDataDate: json['last_known_data_date'],
@@ -48,13 +45,11 @@ class ApiPredictionResult {
         errorMessage: null,
       );
     } else if (json.containsKey('error')) {
-      // Handle the error structure
       return ApiPredictionResult(
         success: false,
         errorMessage: json['error'],
       );
     } else {
-      // Handle unexpected structure
       return ApiPredictionResult(
         success: false,
         errorMessage: 'Unexpected API response format',

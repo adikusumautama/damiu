@@ -1,5 +1,3 @@
-// lib/screens/home/karyawan_home_screen.dart
-
 import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -15,7 +13,6 @@ import 'package:damiu/screens/home/widgets/order_summary.dart';
 import 'package:damiu/screens/home/widgets/orders_list.dart';
 import 'package:damiu/screens/home/widgets/resource_board.dart';
 import 'package:damiu/screens/home/widgets/profile_section.dart';
-import 'package:damiu/screens/home/widgets/customer_book.dart';
 import 'package:damiu/main.dart' show resetDailyStockIfNeeded;
 
 class KaryawanHomeViewModel extends ChangeNotifier {
@@ -27,11 +24,9 @@ class KaryawanHomeViewModel extends ChangeNotifier {
   String _selectedStatus = 'Semua';
   late StreamSubscription _connectivitySubscription;
 
-  // --- State untuk menampilkan Snackbar Konektivitas ---
   String? _snackBarMessage;
   Color? _snackBarColor;
 
-  // --- State untuk Input Galon Kosong ---
   final GlobalKey<FormState> _emptyGallonFormKey = GlobalKey<FormState>();
   final TextEditingController _gallonQuantityController = TextEditingController();
   String? _emptyGallonSnackBarMessage;
@@ -96,14 +91,6 @@ class KaryawanHomeViewModel extends ChangeNotifier {
         results.isNotEmpty && results.first != ConnectivityResult.none;
     if (currentlyOnline == _isOnline && !isInitial) return;
 
-    _isOnline = currentlyOnline;
-    if (hasListeners) {
-      _snackBarMessage = _isOnline
-          ? 'Semua data akan disinkronkan secara otomatis.'
-          : 'Anda sekarang offline. Perubahan akan disimpan di perangkat.';
-      _snackBarColor = _isOnline ? Colors.green : Colors.orange[800];
-    }
-
     notifyListeners();
   }
 
@@ -134,7 +121,6 @@ class KaryawanHomeViewModel extends ChangeNotifier {
           order.firestoreId!,
           OrderStatus.inDelivery,
         );
-  // Cukup panggil metode batched, Firestore akan menanganinya baik online maupun offline.
   Future<String?> onCompleteDelivery(Order order) async =>
       await _firestoreService.completeOrderBatched(order);
 
@@ -166,20 +152,17 @@ class KaryawanHomeViewModel extends ChangeNotifier {
       status: OrderStatus.pending,
       createdAt: finalDateTime,
       employeeUid: _currentUser?.uid,
-      isSynced: true, // Selalu true, biarkan Firestore yang menangani antrean offline
+      isSynced: true,
     );
-    // Cukup panggil metode Firestore, SDK akan menangani caching & antrean offline.
     await _firestoreService.addOrderAndUpsertCustomer(newOrder);
     notifyListeners();
   }
 
-  // --- FUNGSI BARU: Menyimpan Galon Kosong ---
   void saveEmptyGallons() {
     if (!_emptyGallonFormKey.currentState!.validate()) return;
 
     final employeeUid = _currentUser?.uid;
 
-    // Validasi penting: Pastikan UID karyawan tersedia sebelum melanjutkan.
     if (employeeUid == null) {
       _emptyGallonSnackBarMessage = 'Error: Pengguna tidak ditemukan. Coba lagi.';
       _emptyGallonSnackBarColor = Colors.red;
@@ -189,16 +172,12 @@ class KaryawanHomeViewModel extends ChangeNotifier {
 
     final quantity = int.parse(_gallonQuantityController.text);
 
-    // Beri feedback ke pengguna secepatnya dan bersihkan input.
-    // Operasi database akan berjalan di latar belakang.
     _gallonQuantityController.clear();
     _emptyGallonSnackBarMessage =
         'Berhasil! Data akan disinkronkan saat kembali online.';
     _emptyGallonSnackBarColor = Colors.green;
     notifyListeners();
 
-    // Jalankan operasi Firestore di latar belakang.
-    // SDK Firestore akan menangani antrean saat offline secara otomatis.
     _firestoreService.incrementEmptyStock(
       quantity: quantity,
       updatedByUid: employeeUid,
@@ -218,7 +197,6 @@ class KaryawanHomeScreen extends StatelessWidget {
       create: (_) => KaryawanHomeViewModel(),
       child: Consumer<KaryawanHomeViewModel>(
         builder: (context, viewModel, child) {
-          // --- PERBAIKAN: Tampilkan Snackbar saat status koneksi berubah ---
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (viewModel.snackBarMessage != null) {
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -228,7 +206,7 @@ class KaryawanHomeScreen extends StatelessWidget {
               viewModel.clearSnackBar();
             }
 
-            // --- PERBAIKAN: Tampilkan Snackbar untuk input galon kosong ---
+            // Snackbar Input Galon Kosong
             if (viewModel.emptyGallonSnackBarMessage != null) {
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                 content: Text(viewModel.emptyGallonSnackBarMessage!),
@@ -271,10 +249,10 @@ class KaryawanHomeScreen extends StatelessWidget {
                   icon: Icon(Icons.receipt_long_outlined),
                   label: 'Pesanan',
                 ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.book),
-                  label: 'Pelanggan',
-                ),
+                // BottomNavigationBarItem(
+                //   icon: Icon(Icons.book),
+                //   label: 'Pelanggan',
+                // ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.person),
                   label: 'Profil',
@@ -282,7 +260,6 @@ class KaryawanHomeScreen extends StatelessWidget {
               ],
               currentIndex: viewModel.selectedIndex,
               onTap: viewModel.onItemTapped,
-              // --- PERBAIKAN: Mengatur tipe agar warna ikon non-aktif terlihat ---
               type: BottomNavigationBarType.fixed,
               selectedItemColor: Theme.of(context).primaryColor,
               unselectedItemColor: Colors.grey,
@@ -301,14 +278,12 @@ class KaryawanHomeScreen extends StatelessWidget {
   }
 
   String _getAppBarTitle(int index) =>
-      ['Beranda', 'Daftar Pesanan', 'Buku Pelanggan', 'Profil'][index];
+      ['Beranda', 'Daftar Pesanan', 'Profil'][index];
 
-  // --- PERBAIKAN: Memisahkan halaman Beranda dan Pesanan ---
   List<Widget> _buildBodyPages(
     BuildContext context,
     KaryawanHomeViewModel viewModel,
   ) {
-    // --- PERBAIKAN: Selalu gunakan StreamBuilder, Firestore menangani offline ---
     Widget summaryWidget = StreamBuilder<List<Order>>(
       stream: viewModel._firestoreService.getTodaysOrdersStream(),
       builder: (_, s) => OrderSummary(
@@ -332,7 +307,6 @@ class KaryawanHomeScreen extends StatelessWidget {
                 children: [
                   summaryWidget,
                   const Divider(height: 1, indent: 16, endIndent: 16),
-                  // --- PERBAIKAN: Selalu gunakan StreamBuilder ---
                   StreamBuilder<DailyStock?>(
                     stream: viewModel._firestoreService
                         .getDailyStockStream(DateTime.now()),
@@ -376,7 +350,7 @@ class KaryawanHomeScreen extends StatelessWidget {
     return [
       berandaPage,
       pesananPage,
-      const CustomerBook(isOnline: true),
+      // const CustomerBook(isOnline: true),
       ProfileSection(
         user: viewModel.currentUser,
         onLogout: () => _showLogoutConfirmDialog(context, viewModel),
@@ -384,8 +358,7 @@ class KaryawanHomeScreen extends StatelessWidget {
     ];
   }
 
-
-  // --- WIDGET BARU: Input Galon Kosong ---
+  // Input Galon Kosong Kembali
   Widget _buildEmptyGallonInput(BuildContext context, KaryawanHomeViewModel viewModel) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -432,6 +405,7 @@ class KaryawanHomeScreen extends StatelessWidget {
     );
   }
 
+  // Filter Pesanan
   Widget _buildFilterChips(
     BuildContext context,
     KaryawanHomeViewModel viewModel,
@@ -472,6 +446,7 @@ class KaryawanHomeScreen extends StatelessWidget {
     );
   }
 
+  // Tambah Pesanan
   void _showAddOrderDialog(
     BuildContext context,
     KaryawanHomeViewModel viewModel, {
@@ -499,7 +474,7 @@ class KaryawanHomeScreen extends StatelessWidget {
                   address: address,
                   phoneNumber: phoneNumber,
                   status: orderToEdit.status,
-                  createdAt: orderToEdit.createdAt,
+                  createdAt: date, // <-- PERBAIKAN: Gunakan tanggal baru dari dialog
                   employeeUid: viewModel.currentUser?.uid,
                 );
                 final e = await viewModel.onUpdateOrder(
@@ -533,6 +508,7 @@ class KaryawanHomeScreen extends StatelessWidget {
     );
   }
 
+  // Menghapus Pesanan
   void _showDeleteConfirmDialog(
     BuildContext context,
     KaryawanHomeViewModel viewModel,
@@ -586,7 +562,6 @@ class KaryawanHomeScreen extends StatelessWidget {
     }
   }
 
-  // --- PERBAIKAN: Mengganti BottomSheet dengan Dialog Konfirmasi ---
   void _showLogoutConfirmDialog(
     BuildContext context,
     KaryawanHomeViewModel viewModel,

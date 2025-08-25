@@ -44,13 +44,23 @@ class _AddEditCustomerDialogState extends State<AddEditCustomerDialog> {
     super.dispose();
   }
 
-  void _submitForm() {
-    if (_formKey.currentState!.validate()) {
-      widget.onSubmit(
+  void _submitForm() async {
+    // Pertama, validasi form. Gunakan null-aware operator untuk keamanan.
+    if (_formKey.currentState?.validate() ?? false) {
+      // Sembunyikan keyboard secara eksplisit untuk menghindari race condition
+      FocusScope.of(context).unfocus();
+
+      // Jalankan proses submit yang async
+      await widget.onSubmit(
         name: _nameController.text.trim(),
         address: _addressController.text.trim(),
         phoneNumber: _phoneController.text.trim(),
       );
+
+      // Setelah proses async selesai, selalu cek 'mounted'
+      if (!mounted) return;
+
+      // Tutup dialog
       Navigator.of(context).pop();
     }
   }

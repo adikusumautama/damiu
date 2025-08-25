@@ -6,7 +6,7 @@ import 'package:damiu/screens/auth/login_screen.dart';
 import 'package:damiu/screens/auth/register_screen.dart';
 import 'package:damiu/screens/home/admin_home_screen.dart';
 import 'package:damiu/screens/home/karyawan_home_screen.dart';
-import 'package:damiu/screens/home/pelanggan_home_screen.dart';
+import 'package:damiu/screens/home/default.dart';
 import 'package:damiu/services/auth_service.dart';
 import 'package:damiu/services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -21,7 +21,6 @@ void main() {
     WidgetsFlutterBinding.ensureInitialized();
     await initializeDateFormatting('id_ID', null);
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    // Aktifkan Firestore persistence secara eksplisit.
     FirebaseFirestore.instance.settings =
         const Settings(persistenceEnabled: true);
     FlutterError.onError = (details) => debugPrint('Flutter Error: ${details.exceptionAsString()}');
@@ -36,14 +35,13 @@ class MainApp extends StatelessWidget {
     return MaterialApp(
       title: 'Aylaqua',
       theme: ThemeData(primarySwatch: Colors.blue, visualDensity: VisualDensity.adaptivePlatformDensity),
-      // --- TAMBAHKAN INI UNTUK MENGATASI ERROR ---
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [
-        Locale('id', 'ID'), // Mengatur bahasa Indonesia sebagai bahasa yang didukung
+        Locale('id', 'ID'),
       ],
       home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
@@ -61,17 +59,11 @@ class AuthWrapper extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
         if (snapshot.hasData && snapshot.data != null) {
           return FutureBuilder<UserModel?>(
-            // --- PERBAIKAN UTAMA: Gunakan metode yang mendukung offline ---
-            // getActiveUserModel akan mencoba mengambil data dari jaringan,
-            // jika gagal (offline), ia akan mengambil dari cache lokal.
             future: AuthService().getActiveUserModel(snapshot.data!.uid),
             builder: (context, userModelSnapshot) {
               if (userModelSnapshot.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
               
-              // Jika tidak ada data sama sekali (baik dari jaringan maupun cache),
-              // atau terjadi error yang tidak terduga, kembali ke halaman login.
               if (!userModelSnapshot.hasData || userModelSnapshot.data == null) {
-                // Anda bisa menambahkan log di sini untuk debugging
                 print('AuthWrapper: Tidak dapat memuat data pengguna dari jaringan maupun cache. Kembali ke login.');
                 return const AuthToggle();
               }
@@ -118,8 +110,6 @@ Future<void> resetDailyStockIfNeeded({required bool isOnline, required String? e
     final yesterday = activeDate.subtract(const Duration(days: 1));
     final yesterdayStock = await firestoreService.getDailyStockOnce(yesterday);
     
-    // Stok awal hari ini adalah sisa stok dari hari sebelumnya.
-    // Galon kosong dari hari sebelumnya sudah ditambahkan ke stok tersedia secara real-time.
     final lastDayFilledStock = yesterdayStock?.currentStock ?? 0; 
 
     await firestoreService.setInitialStock(date: activeDate, filledStock: lastDayFilledStock, updatedByUid: employeeUid);

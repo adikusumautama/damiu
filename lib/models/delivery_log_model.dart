@@ -1,12 +1,12 @@
 // lib/models/delivery_log_model.dart
 class DeliveryLogItem {
   final int? id;
-  final DateTime timestamp; // Tanggal dan Waktu pengantaran
+  final DateTime timestamp; 
   final int gallons;
   final int emptyGallonsReturned;
   final String employeeUid;
-  bool isSummarized; // Status apakah log ini sudah termasuk dalam ringkasan harian
-  final bool isNoDeliveryMarker; // Penanda jika ini adalah entri "tidak ada pengantaran"
+  bool isSummarized; 
+  final bool isNoDeliveryMarker; 
 
   DeliveryLogItem({
     this.id,
@@ -15,7 +15,7 @@ class DeliveryLogItem {
     this.emptyGallonsReturned = 0,
     required this.employeeUid,
     this.isSummarized = false,
-    this.isNoDeliveryMarker = false, // Default ke false
+    this.isNoDeliveryMarker = false, 
   });
 
   Map<String, dynamic> toMap() {
@@ -34,7 +34,7 @@ class DeliveryLogItem {
     return DeliveryLogItem(
       id: map['id'] as int?,
       timestamp: DateTime.parse(map['timestamp'] as String),
-      gallons: (map['gallons'] as num).toInt(), // Handle double dari DB
+      gallons: (map['gallons'] as num).toInt(), 
       emptyGallonsReturned: (map['empty_gallons_returned'] as num?)?.toInt() ?? 0,
       employeeUid: map['employee_uid'] as String,
       isSummarized: map['is_summarized'] == 1,

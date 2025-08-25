@@ -58,9 +58,6 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
 
   Future<void> _loadCustomers() async {
     try {
-      // Mengambil data pelanggan sekali saja saat dialog dibuka.
-      // Ini berfungsi untuk Admin (online) dan Karyawan (online).
-      // Untuk Karyawan offline, daftar ini akan kosong dan autocomplete tidak akan berfungsi.
       final customers = await _firestoreService.getAllCustomersOnce();
       if (mounted) {
         setState(() {
@@ -82,7 +79,7 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
       lastDate: DateTime(2101),
-      locale: const Locale('id', 'ID'), // Menggunakan lokal Indonesia
+      locale: const Locale('id', 'ID'),
     );
     if (picked != null && picked != _selectedDate) {
       setState(() => _selectedDate = picked);
@@ -197,7 +194,7 @@ class _AddOrderDialogState extends State<AddOrderDialog> {
               ),
               TextFormField(
                 controller: _otherItemsController,
-                decoration: const InputDecoration(labelText: 'Item Lain (Opsional)'),
+                decoration: const InputDecoration(labelText: 'Catatan Lain (Opsional)'),
               ),
               const SizedBox(height: 16),
               const Divider(),

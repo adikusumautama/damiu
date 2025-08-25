@@ -122,7 +122,7 @@ class OrderCard extends StatelessWidget {
                     style: const TextStyle(fontSize: 16, height: 1.5),
                     children: [
                       const TextSpan(
-                          text: 'Item Lain: ',
+                          text: 'Catatan Lain: ',
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       TextSpan(text: order.otherItems),
                     ],

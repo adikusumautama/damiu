@@ -137,7 +137,7 @@ class _OrderInputScreenState extends State<OrderInputScreen> {
               ),
               const SizedBox(height: 24),
 
-              // --- WIDGET AUTOCOMPLETE YANG DIKEMBALIKAN ---
+              // Widget Autocomplete
               Autocomplete<Customer>(
                 displayStringForOption: (Customer option) => option.name,
                 optionsBuilder: (TextEditingValue textEditingValue) {

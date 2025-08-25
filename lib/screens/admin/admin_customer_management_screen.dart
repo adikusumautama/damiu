@@ -102,11 +102,14 @@ class _AdminCustomerManagementScreenState
           TextButton(
             child: const Text('Hapus', style: TextStyle(color: Colors.red)),
             onPressed: () async {
-              Navigator.of(ctx).pop();
               if (customer.firestoreId != null) {
                 final error =
                     await _firestoreService.deleteCustomer(customer.firestoreId!);
+                if (!mounted) return;
+                Navigator.of(ctx).pop(); // Pop the confirmation dialog
                 _handleApiResponse(error, 'Pelanggan berhasil dihapus.');
+              } else {
+                Navigator.of(ctx).pop();
               }
             },
           ),
@@ -130,8 +133,9 @@ class _AdminCustomerManagementScreenState
           TextButton(
             child: const Text('Hapus Semua', style: TextStyle(color: Colors.red)),
             onPressed: () async {
-              Navigator.of(ctx).pop();
               final error = await _firestoreService.deleteAllCustomers();
+              if (!mounted) return;
+              Navigator.of(ctx).pop();
               _handleApiResponse(error, 'Semua pelanggan berhasil dihapus.');
             },
           ),
@@ -144,7 +148,7 @@ class _AdminCustomerManagementScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kelola Pelanggan'),
+        // title: const Text('Pelanggan'),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep_outlined),

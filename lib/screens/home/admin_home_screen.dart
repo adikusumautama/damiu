@@ -25,14 +25,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
 
-  // --- DAFTAR HALAMAN ADMIN YANG DIPERBARUI ---
+
   static const List<Widget> _adminPages = <Widget>[
     AdminDashboardScreen(),
     AdminPredictionViewScreen(),
-    AdminOrderManagementScreen(), // Halaman baru untuk CRUD Pesanan
-    AdminFirestoreDataWidget(), // Halaman untuk Rekap Penjualan
-    AdminCustomerManagementScreen(), // Halaman baru untuk CRUD Pelanggan
-    AdminReturnedGallonLogScreen(), // Halaman baru untuk Log Galon Kembali
+    AdminOrderManagementScreen(), 
+    AdminFirestoreDataWidget(), 
+    AdminCustomerManagementScreen(), 
+    AdminReturnedGallonLogScreen(), 
   ];
 
   void _onItemTapped(int index) {
@@ -44,15 +44,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   String _getAppBarTitle(int index) {
     switch(index) {
       case 0:
-        return 'Dasbor Admin';
+        return 'Dashboard Admin';
       case 1:
         return 'Grafik Prediksi';
       case 2:
-        return 'Kelola Pesanan'; // Judul baru
+        return 'Kelola Pesanan';
       case 3:
-        return 'Rekap Penjualan'; // Judul baru
+        return 'Rekap Penjualan'; 
       case 4:
-        return 'Kelola Pelanggan';
+        return 'Daftar Pelanggan';
       case 5:
         return 'Log Galon Kembali';
       default:
@@ -118,13 +118,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _selectedIndex == 5 // Jika tab Log Galon dipilih
-          ? null // Tidak menampilkan AppBar utama, karena halaman log sudah punya AppBar sendiri
+      appBar: _selectedIndex == 5
+          ? null 
           : AppBar(
         title: Text(_getAppBarTitle(_selectedIndex)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            
+            icon: const Icon(Icons.logout_outlined),
             onPressed: () async {
               await _authService.signOut();
             },
@@ -146,7 +147,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard_outlined),
-            label: 'Dasbor',
+            label: 'Dashboard',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.insights_outlined),
@@ -161,12 +162,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             label: 'Rekap',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline),
+            icon: Icon(Icons.storage_outlined),
             label: 'Pelanggan',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history_toggle_off_outlined),
-            label: 'Log Galon',
           ),
         ],
         currentIndex: _selectedIndex,

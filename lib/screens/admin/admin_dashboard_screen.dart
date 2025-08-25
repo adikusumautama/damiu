@@ -1,4 +1,3 @@
-// lib/screens/admin/admin_dashboard_screen.dart
 
 import 'package:damiu/models/daily_stock_model.dart';
 import 'package:damiu/models/order_model.dart';
@@ -25,7 +24,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final PredictionService _predictionService = PredictionService();
   final AuthService _authService = AuthService();
-  // --- PERBAIKAN: Menggunakan tipe data Future yang benar ---
   late Future<ApiPredictionResult> _predictionFuture;
 
   @override
@@ -36,7 +34,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _loadPrediction() {
     setState(() {
-      // --- PERBAIKAN: Memanggil nama fungsi yang benar ---
       _predictionFuture = _predictionService.getPredictionsFromApi();
     });
   }
@@ -110,18 +107,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
         final int currentStock = stock?.currentStock ?? 0;
         final int emptyStock = stock?.initialEmptyStock ?? 0;
-        // PERUBAHAN: Ambil data terjual dari field baru, bukan dari perhitungan.
         final int soldStock = stock?.totalSold ?? 0;
 
-        // --- PERUBAHAN: Menggunakan list data untuk kartu ringkasan ---
         final List<Map<String, dynamic>> summaryData = [
           {'title': 'Total Pesanan', 'value': '$totalOrdersToday', 'icon': Icons.shopping_cart_outlined, 'color': Colors.blue},
-          {'title': 'Pesanan Selesai', 'value': '$deliveredOrdersCount', 'icon': Icons.check_circle_outline, 'color': Colors.green},
-          {'title': 'Menunggu Diantar', 'value': '$pendingOrdersCount', 'icon': Icons.pending_actions_outlined, 'color': Colors.orange},
+          {'title': 'Sudah Diantar', 'value': '$deliveredOrdersCount', 'icon': Icons.check_circle_outline, 'color': Colors.green},
+          {'title': 'Belum Diantar', 'value': '$pendingOrdersCount', 'icon': Icons.pending_actions_outlined, 'color': Colors.orange},
           {'title': 'Sedang Diantar', 'value': '$inDeliveryOrdersCount', 'icon': Icons.delivery_dining_outlined, 'color': Colors.purple},
           {'title': 'Galon Tersedia', 'value': '$currentStock', 'icon': Icons.inventory, 'color': Colors.teal},
-          {'title': 'Total Terjual', 'value': '$soldStock', 'icon': Icons.point_of_sale, 'color': Colors.pink},
-          {'title': 'Galon Kosong', 'value': '$emptyStock', 'icon': Icons.hourglass_empty_outlined, 'color': Colors.orange},
+          {'title': 'Terjual Hari Ini', 'value': '$soldStock', 'icon': Icons.point_of_sale, 'color': Colors.pink},
+          {'title': 'Galon Kembali', 'value': '$emptyStock', 'icon': Icons.hourglass_empty_outlined, 'color': Colors.orange},
         ];
 
         return RefreshIndicator(
@@ -129,8 +124,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             _loadPrediction();
           },
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            // --- PERUBAHAN: Menggunakan GridView untuk tata letak yang lebih rapi ---
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -146,8 +140,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ],
                 ),
                 
-                const SizedBox(height: 24),
-                _buildPredictionCard(),
 
                 const SizedBox(height: 16),
                 GridView.builder(
@@ -179,7 +171,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // --- WIDGET PREDIKSI YANG SUDAH DISESUAIKAN DENGAN MODEL DATA BARU ---
   Widget _buildPredictionCard() {
     return Card(
       elevation: 4,
@@ -197,7 +188,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             } else if (!snapshot.hasData || !snapshot.data!.success) {
               content = Center(child: Text(snapshot.data?.errorMessage ?? 'Data prediksi tidak tersedia.'));
             } else {
-              // Jika sukses, tampilkan data prediksi
               final predictionValue = snapshot.data!.predictionForNextDay?.predictedQuantity ?? 'N/A';
               content = Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -217,21 +207,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               children: [
                 const Text('Informasi Prediksi', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo)),
                 const SizedBox(height: 10),
-                content, // Tampilkan konten (loading, error, atau data)
+                content, 
                 const SizedBox(height: 10),
-                // Align(
-                //   alignment: Alignment.centerRight,
-                //   child: TextButton.icon(
-                //     icon: const Text('Lihat Grafik Detail'),
-                //     label: const Icon(Icons.arrow_forward_ios, size: 14),
-                //     onPressed: () {
-                //       Navigator.push(
-                //         context,
-                //         MaterialPageRoute(builder: (context) => const AdminPredictionViewScreen()),
-                //       );
-                //     },
-                //   ),
-                // ),
               ],
             );
           },

@@ -38,7 +38,7 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
             address: address,
             phoneNumber: phoneNumber,
             status: orderToEdit.status,
-            createdAt: orderToEdit.createdAt,
+            createdAt: date, 
             employeeUid: orderToEdit.employeeUid,
           );
           final error = await _firestoreService.updateOrder(orderToEdit.firestoreId!, updatedOrder);
@@ -61,10 +61,10 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
       otherItems: order.otherItems,
       address: order.address,
       phoneNumber: order.phoneNumber,
-      status: OrderStatus.inDelivery, // <-- Ubah status
+      status: OrderStatus.inDelivery, // Ubah status
       createdAt: order.createdAt,
       employeeUid: order.employeeUid,
-      deliveredAt: order.deliveredAt, // Pertahankan waktu selesai yang mungkin sudah ada
+      deliveredAt: order.deliveredAt, 
     );
     final error = await _firestoreService.updateOrder(order.firestoreId!, updatedOrder);
     if (mounted) _handleApiResponse(error, 'Status pesanan diubah menjadi "Sedang Diantar".');
@@ -75,7 +75,6 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
       _handleApiResponse('Pesanan tidak memiliki ID Firestore.', null);
       return;
     }
-    // Gunakan metode batched yang baru, yang berfungsi baik online maupun offline.
     final error = await _firestoreService.completeOrderBatched(order);
     if (mounted) _handleApiResponse(error, 'Pesanan berhasil diselesaikan dan rekap penjualan diperbarui.');
   }
@@ -213,6 +212,7 @@ class _AdminOrderManagementScreenState extends State<AdminOrderManagementScreen>
     );
   }
 
+  // Filter Status
   Widget _buildFilterChips() {
     final statuses = ['Semua', OrderStatus.pending, OrderStatus.inDelivery, OrderStatus.delivered];
     return Padding(
